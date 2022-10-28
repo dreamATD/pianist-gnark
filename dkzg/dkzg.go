@@ -57,12 +57,12 @@ func eval(p []fr.Element, point fr.Element) fr.Element {
 	return res
 }
 
-// NewSRS returns a new SRS using alpha as randomness source
+// NewSRS returns a new SRS using alpha as randomness source for the ith party
 //
 // In production, a SRS generated through MPC should be used.
 //
 // implements io.ReaderFrom and io.WriterTo
-func NewSRS(size uint64, bAlpha *big.Int) (*SRS, error) {
+func NewSRS(size uint64, tau []*big.Int, i uint64) (*SRS, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
