@@ -18,7 +18,6 @@ package piano
 
 import (
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -34,10 +33,6 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
-)
-
-var (
-	errWrongClaimedQuotient = errors.New("claimed quotient is not as expected")
 )
 
 func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) error {
@@ -141,7 +136,11 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 			alpha,
 			shiftedalpha,
 		},
-		vk.KZGSRS)
+		vk.KZGSRS,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to batch verify on X = alpha: %v", err)
+	}
 
 	// derive beta
 	beta, err := deriveRandomness(&fs, "beta", &proof.Hy[0], &proof.Hy[1], &proof.Hy[2])
@@ -153,11 +152,11 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	unpack(proof.BatchedProof.ClaimedValues, &l, &r, &o, &ql, &qr, &qm, &qo, &qk, &s1, &s2, &s3, &z, &zmu)
 
 	// The Linearized identities is:
-	//
-	// λ²*L₁(α)*(Z(β,α) - 1)
-	// + λ*( (l(α)+η*s1(α)+γ)*(r(α)+η*s2(α)+γ)*(o(α)+η*s3(α)+γ)*Z(β,μα)- (l(α)+η*id1(α)+γ)*(r(α)+η*id2(α)+γ)*(o(α)+η*id3(α)+γ)*Z(β,α) )
-	// + l(β,α)*Ql(β,α) + l(β,α)r(β,α)*Qm(β,α) + r(β,α)*Qr(β,α) + o(β,α)*Qo(β,α) + Qk(β,α)
-	// - Zn(α)*Hx(Y,α) - Zm(β)*(Hy1(Y) + β**m*Hy2(Y) + β**(2m)*Hy3(Y))
+	// lambda**2 * L1(alpha)*(Z(beta, alpha) - 1)
+	// + lambda * ((L(beta, alpha)+eta*S1(beta, alpha)+gamma) * (R(beta, alpha)+eta*S2(beta, alpha)+gamma) * (O(beta, alpha)+eta*S3(beta, alpha)+gamma) * Z(beta, mu*alpha)
+	//		 - (L(beta, alpha)+eta*id1(beta, alpha)+gamma) * (R(beta, alpha)+eta*id2(beta, alpha)+gamma) * (O(beta, alpha)+eta*id3(beta, alpha)+gamma)*Z(beta, alpha) )
+	// + Ql(beta, alpha)*L(beta, alpha) + Qm(beta, alpha)*L(beta, alpha)R(beta, alpha) + Qr(beta, alpha)*R(beta, alpha) + Qo(beta, alpha)*O(beta, alpha) + Qk(beta, alpha)
+	// - Zn(alpha)*Hx(Y,alpha) - Zm(beta)*FoldedHy(Y) = 0
 	//
 	// first part: individual constraints
 	var firstPart fr.Element
@@ -168,26 +167,25 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	firstPart.Add(&ql, &qr).Add(&firstPart, &qm).Add(&firstPart, &qo).Add(&firstPart, &qk)
 
 	// second part:
-	// (l(α)+η*s1(α)+γ)*(r(α)+η*s2(α)+γ)*(o(α)+η*s3(α)+γ)*Z(β,μα)- (l(α)+η*id1(α)+γ)*(r(α)+η*id2(α)+γ)*(o(α)+η*id3(α)+γ)*Z(β,α)
-	s1.Mul(&s1, &eta).Add(&s1, &l).Add(&s1, &gamma) // (l(α)+η*s1(α)+γ)
-	s2.Mul(&s2, &eta).Add(&s2, &r).Add(&s2, &gamma) // (r(α)+η*s2(α)+γ)
-	s3.Mul(&s3, &eta).Add(&s3, &o).Add(&s3, &gamma) // (o(α)+η*s3(α)+γ)
-	s1.Mul(&s1, &s2).Mul(&s1, &s3).Mul(&s1, &zmu)   // (l(α)+η*s1(α)+γ)*(r(α)+η*s2(α)+γ)*(o(α)+η*s3(α)+γ)*Z(β,μα)
+	// ((L(beta, alpha)+eta*S1(beta, alpha)+gamma) * (R(beta, alpha)+eta*S2(beta, alpha)+gamma) * (O(beta, alpha)+eta*S3(beta, alpha)+gamma) * Z(beta, mu*alpha)
+	s1.Mul(&s1, &eta).Add(&s1, &l).Add(&s1, &gamma)
+	s2.Mul(&s2, &eta).Add(&s2, &r).Add(&s2, &gamma)
+	s3.Mul(&s3, &eta).Add(&s3, &o).Add(&s3, &gamma)
+	s1.Mul(&s1, &s2).Mul(&s1, &s3).Mul(&s1, &zmu)
 
 	var ualpha, uualpha fr.Element
 	ualpha.Mul(&alpha, &vk.CosetShift)
 	uualpha.Mul(&alpha, &vk.CosetShift)
 
 	var secondPart, tmp fr.Element
-	secondPart.Mul(&eta, &alpha).Add(&secondPart, &l).Add(&secondPart, &gamma) // (l(α)+η*α+γ)
-	tmp.Mul(&eta, &ualpha).Add(&tmp, &r).Add(&tmp, &gamma)                     // (r(α)+η*u*α+γ)
-	secondPart.Mul(&secondPart, &tmp)                                          // (l(α)+η*α+γ)*(r(α)+η*u*α+γ)
-	tmp.Mul(&eta, &uualpha).Add(&tmp, &o).Add(&tmp, &gamma)                    // (o(α)+η*u²*α+γ)
-	secondPart.Mul(&secondPart, &tmp).                                         // (l(α)+η*α+γ)*(r(α)+η*u*α+γ)*(o(α)+η*u²*α+γ)
-											Mul(&secondPart, &z)
-	secondPart.Sub(&s1, &secondPart) // -(l(α)+η*α+γ)*(r(α)+η*u*α+γ)*(o(α)+η*u²*α+γ)
+	secondPart.Mul(&eta, &alpha).Add(&secondPart, &l).Add(&secondPart, &gamma)
+	tmp.Mul(&eta, &ualpha).Add(&tmp, &r).Add(&tmp, &gamma)
+	secondPart.Mul(&secondPart, &tmp)
+	tmp.Mul(&eta, &uualpha).Add(&tmp, &o).Add(&tmp, &gamma)
+	secondPart.Mul(&secondPart, &tmp).Mul(&secondPart, &z)
+	secondPart.Sub(&s1, &secondPart)
 
-	// third part L₁(α)*(Z(β,α)-1)
+	// third part L1(alpha) * (Z(beta, alpha)-1)
 	var thirdPart, den, frNbElmt fr.Element
 	z.Sub(&z, &one)
 	nbElmt := int64(vk.Size)
@@ -197,9 +195,9 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	frNbElmt.SetUint64(uint64(nbElmt))
 	den.Sub(&alpha, &one).
 		Inverse(&den)
-	thirdPart.Mul(&thirdPart, &den). // L₁ = (αⁿ⁻¹)/(α-1)
-						Mul(&thirdPart, &vk.SizeInv). // (1/n)*λ²*L₁(α)
-						Mul(&thirdPart, &z)
+	thirdPart.Mul(&thirdPart, &den).
+		Mul(&thirdPart, &vk.SizeInv).
+		Mul(&thirdPart, &z)
 
 	var constTerm fr.Element
 	constTerm.Mul(&thirdPart, &lambda).Add(&constTerm, &secondPart).Mul(&constTerm, &lambda).Add(&constTerm, &firstPart)
@@ -210,7 +208,7 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	hyTerm.Exp(beta, big.NewInt(int64(globalDomain[0].Cardinality)))
 	hyTerm.Sub(&one, &hyTerm)
 
-	// foldedHy = h1 + β*h2 + β²*h3
+	// foldedHy = hy1 + (beta**M)hy2 + (beta**(2M))*hy3
 	var bBetaPowerM, bSize big.Int
 	bSize.SetUint64(globalDomain[0].Cardinality)
 	var betaPowerM fr.Element
@@ -224,7 +222,7 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 
 	points := []curve.G1Affine{
 		vk.KZGSRS.G1[0],
-		proof.PartialBatchedProof.ClaimedDigests[0], // Hx(Y,α)
+		proof.PartialBatchedProof.ClaimedDigests[0],
 		foldedHyDigest,
 	}
 
@@ -299,7 +297,6 @@ func bindPublicData(fs *fiatshamir.Transcript, challenge string, vk VerifyingKey
 }
 
 func deriveRandomness(fs *fiatshamir.Transcript, challenge string, points ...*curve.G1Affine) (fr.Element, error) {
-
 	var buf [curve.SizeOfG1AffineUncompressed]byte
 	var r fr.Element
 
