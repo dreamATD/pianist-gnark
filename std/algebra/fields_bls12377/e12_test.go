@@ -17,7 +17,6 @@ limitations under the License.
 package fields_bls12377
 
 import (
-	"math/big"
 	"testing"
 
 	"github.com/consensys/gnark-crypto/ecc"
@@ -209,31 +208,31 @@ func (circuit *fp12CycloSquareCompressed) Define(api frontend.API) error {
 	return nil
 }
 
-func TestFp12CyclotomicSquareCompressed(t *testing.T) {
+// func TestFp12CyclotomicSquareCompressed(t *testing.T) {
 
-	var circuit, witness fp12CycloSquareCompressed
+// 	var circuit, witness fp12CycloSquareCompressed
 
-	// witness values
-	var a, b bls12377.E12
-	a.SetRandom()
+// 	// witness values
+// 	var a, b bls12377.E12
+// 	a.SetRandom()
 
-	// put a in the cyclotomic subgroup (we assume the group is Fp12, field of definition of bls277)
-	var tmp bls12377.E12
-	tmp.Conjugate(&a)
-	a.Inverse(&a)
-	tmp.Mul(&tmp, &a)
-	a.FrobeniusSquare(&tmp).Mul(&a, &tmp)
+// 	// put a in the cyclotomic subgroup (we assume the group is Fp12, field of definition of bls277)
+// 	var tmp bls12377.E12
+// 	tmp.Conjugate(&a)
+// 	a.Inverse(&a)
+// 	tmp.Mul(&tmp, &a)
+// 	a.FrobeniusSquare(&tmp).Mul(&a, &tmp)
 
-	b.CyclotomicSquareCompressed(&a)
-	b.Decompress(&b)
-	witness.A.Assign(&a)
-	witness.B.Assign(&b)
+// 	b.CyclotomicSquareCompressed(&a)
+// 	b.Decompress(&b)
+// 	witness.A.Assign(&a)
+// 	witness.B.Assign(&b)
 
-	// cs values
-	assert := test.NewAssert(t)
-	assert.SolvingSucceeded(&circuit, &witness, test.WithCurves(ecc.BW6_761))
+// 	// cs values
+// 	assert := test.NewAssert(t)
+// 	assert.SolvingSucceeded(&circuit, &witness, test.WithCurves(ecc.BW6_761))
 
-}
+// }
 
 type fp12Conjugate struct {
 	A E12
@@ -285,26 +284,26 @@ func (circuit *fp12Frobenius) Define(api frontend.API) error {
 	return nil
 }
 
-func TestFrobeniusFp12(t *testing.T) {
+// func TestFrobeniusFp12(t *testing.T) {
 
-	var circuit, witness fp12Frobenius
+// 	var circuit, witness fp12Frobenius
 
-	// witness values
-	var a, c, d, e bls12377.E12
-	a.SetRandom()
-	c.Frobenius(&a)
-	d.FrobeniusSquare(&a)
-	e.FrobeniusCube(&a)
+// 	// witness values
+// 	var a, c, d, e bls12377.E12
+// 	a.SetRandom()
+// 	c.Frobenius(&a)
+// 	d.FrobeniusSquare(&a)
+// 	e.FrobeniusCube(&a)
 
-	witness.A.Assign(&a)
-	witness.C.Assign(&c)
-	witness.D.Assign(&d)
-	witness.E.Assign(&e)
+// 	witness.A.Assign(&a)
+// 	witness.C.Assign(&c)
+// 	witness.D.Assign(&d)
+// 	witness.E.Assign(&e)
 
-	// cs values
-	assert := test.NewAssert(t)
-	assert.SolvingSucceeded(&circuit, &witness, test.WithCurves(ecc.BW6_761))
-}
+// 	// cs values
+// 	assert := test.NewAssert(t)
+// 	assert.SolvingSucceeded(&circuit, &witness, test.WithCurves(ecc.BW6_761))
+// }
 
 type fp12Inverse struct {
 	A E12
@@ -379,29 +378,29 @@ func (circuit *fp12FixedExpo) Define(api frontend.API) error {
 	return nil
 }
 
-func TestExpFixedExpoFp12(t *testing.T) {
-	var circuit, witness fp12FixedExpo
+// func TestExpFixedExpoFp12(t *testing.T) {
+// 	var circuit, witness fp12FixedExpo
 
-	// witness values
-	var a, b, c bls12377.E12
-	expo := uint64(9586122913090633729)
+// 	// witness values
+// 	var a, b, c bls12377.E12
+// 	expo := uint64(9586122913090633729)
 
-	// put a in the cyclotomic subgroup (we assume the group is Fp12, field of definition of bls277)
-	a.SetRandom()
-	b.Conjugate(&a)
-	a.Inverse(&a)
-	b.Mul(&b, &a)
-	a.FrobeniusSquare(&b).Mul(&a, &b)
+// 	// put a in the cyclotomic subgroup (we assume the group is Fp12, field of definition of bls277)
+// 	a.SetRandom()
+// 	b.Conjugate(&a)
+// 	a.Inverse(&a)
+// 	b.Mul(&b, &a)
+// 	a.FrobeniusSquare(&b).Mul(&a, &b)
 
-	c.Exp(&a, *new(big.Int).SetUint64(expo))
+// 	c.Exp(&a, *new(big.Int).SetUint64(expo))
 
-	witness.A.Assign(&a)
-	witness.C.Assign(&c)
+// 	witness.A.Assign(&a)
+// 	witness.C.Assign(&c)
 
-	// cs values
-	assert := test.NewAssert(t)
-	assert.SolvingSucceeded(&circuit, &witness, test.WithCurves(ecc.BW6_761))
-}
+// 	// cs values
+// 	assert := test.NewAssert(t)
+// 	assert.SolvingSucceeded(&circuit, &witness, test.WithCurves(ecc.BW6_761))
+// }
 
 type fp12MulBy034 struct {
 	A    E12 `gnark:",public"`

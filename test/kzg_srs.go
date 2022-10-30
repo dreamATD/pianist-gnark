@@ -18,6 +18,7 @@ package test
 
 import (
 	"crypto/rand"
+	"math/big"
 	"sync"
 
 	"github.com/consensys/gnark-crypto/ecc"
@@ -77,11 +78,30 @@ func getCachedSRS(ccs frontend.CompiledConstraintSystem) (kzg.SRS, error) {
 
 func newKZGSRS(curve ecc.ID, kzgSize uint64) (kzg.SRS, error) {
 
-	alpha, err := rand.Int(rand.Reader, curve.Info().Fr.Modulus())
+	alpha, err := rand.Int(rand.Reader, curve.ScalarField())
 	if err != nil {
 		return nil, err
 	}
 
+	switch curve {
+	case ecc.BN254:
+		return kzg_bn254.NewSRS(kzgSize, alpha)
+	case ecc.BLS12_381:
+		return kzg_bls12381.NewSRS(kzgSize, alpha)
+	case ecc.BLS12_377:
+		return kzg_bls12377.NewSRS(kzgSize, alpha)
+	case ecc.BW6_761:
+		return kzg_bw6761.NewSRS(kzgSize, alpha)
+	case ecc.BLS24_315:
+		return kzg_bls24315.NewSRS(kzgSize, alpha)
+	case ecc.BW6_633:
+		return kzg_bw6633.NewSRS(kzgSize, alpha)
+	default:
+		panic("unrecognized R1CS curve type")
+	}
+}
+
+func newKZGSRSFromRand(curve ecc.ID, alpha *big.Int, kzgSize uint64) (kzg.SRS, error) {
 	switch curve {
 	case ecc.BN254:
 		return kzg_bn254.NewSRS(kzgSize, alpha)

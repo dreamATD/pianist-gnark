@@ -125,7 +125,7 @@ func (w *Witness) UnmarshalBinary(data []byte) error {
 	r = bytes.NewReader(data)
 	if w.Schema != nil {
 		// if schema is set we can do a limit reader
-		maxSize := 4 + (w.Schema.NbPublic+w.Schema.NbSecret)*w.CurveID.Info().Fr.Bytes
+		maxSize := 4 + (w.Schema.NbPublic+w.Schema.NbSecret)*w.CurveID.ScalarField().BitLen()/8
 		r = io.LimitReader(r, int64(maxSize))
 	}
 

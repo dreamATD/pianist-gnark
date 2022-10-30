@@ -29,7 +29,7 @@ import (
 
 	"bytes"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
-	"github.com/consensys/gnark/dkzg"
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/dkzg"
 	"math/big"
 	"reflect"
 	"testing"
@@ -80,7 +80,7 @@ func referenceCircuit() (frontend.CompiledConstraintSystem, frontend.Circuit, *d
 	}
 
 	good.Y = (expectedY)
-	dsrs, err := dkzg.NewSRS(ecc.NextPowerOfTwo(nbConstraints)+3, []*big.Int{new(big.Int).SetUint64(42)}, 0)
+	dsrs, err := dkzg.NewSRS(ecc.NextPowerOfTwo(nbConstraints)+3, []*big.Int{new(big.Int).SetUint64(42), new(big.Int).SetUint64(42)})
 	if err != nil {
 		panic(err)
 	}

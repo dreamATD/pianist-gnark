@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
-	"github.com/consensys/gnark/dkzg"
 
 	curve "github.com/consensys/gnark-crypto/ecc/bn254"
 	bn254witness "github.com/consensys/gnark/internal/backend/bn254/witness"
@@ -33,6 +32,7 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/dkzg"
 )
 
 func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) error {

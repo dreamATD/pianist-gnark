@@ -22,9 +22,11 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/fft"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
-	"github.com/consensys/gnark/dkzg"
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/dkzg"
 	"github.com/consensys/gnark/internal/backend/bn254/cs"
 	"github.com/sunblaze-ucb/simpleMPI/mpi"
+
+	dkzgg "github.com/consensys/gnark-crypto/dkzg"
 )
 
 var (
@@ -130,7 +132,7 @@ func Setup(spr *cs.SparseR1CS, dkzgSRS *dkzg.SRS, kzgSRS *kzg.SRS) (*ProvingKey,
 	vk.Generator.Set(&pk.Domain[0].Generator)
 	vk.NbPublicVariables = uint64(spr.NbPublicVariables)
 
-	if err := pk.InitKZG(*dkzgSRS); err != nil {
+	if err := pk.InitKZG(dkzgSRS); err != nil {
 		return nil, nil, err
 	}
 
@@ -337,7 +339,7 @@ func getIDSmallDomain(domain *fft.Domain) []fr.Element {
 //
 // This should be used after deserializing a ProvingKey
 // as pk.Vk.KZG is NOT serialized
-func (pk *ProvingKey) InitKZG(srs dkzg.SRS) error {
+func (pk *ProvingKey) InitKZG(srs dkzgg.SRS) error {
 	return pk.Vk.InitKZG(srs)
 }
 
@@ -347,11 +349,11 @@ func (pk *ProvingKey) InitKZG(srs dkzg.SRS) error {
 // as vk.KZG is NOT serialized
 //
 // Note that this instantiate a new FFT domain using vk.Size
-func (vk *VerifyingKey) InitKZG(srs dkzg.SRS) error {
-	_srs := &srs
+func (vk *VerifyingKey) InitKZG(srs dkzgg.SRS) error {
+	_srs := srs.(*dkzg.SRS)
 
 	if len(_srs.G1) < int(vk.Size) {
-		return errors.New("kzg srs is too small")
+		return errors.New("dkzg srs is too small")
 	}
 	vk.KZGSRS = _srs
 
