@@ -18,6 +18,7 @@ package piano
 
 import (
 	"crypto/sha256"
+	"fmt"
 	"math/big"
 	"math/bits"
 	"runtime"
@@ -27,8 +28,8 @@ import (
 	curve "github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 
-	"github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/dkzg"
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/fft"
 
@@ -139,12 +140,11 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	if err := bindPublicData(&fs, "gamma", *pk.Vk, fullWitness[:spr.NbPublicVariables]); err != nil {
 		return nil, err
 	}
-	bgamma, err := fs.ComputeChallenge("gamma")
+	gamma, err := deriveRandomness(&fs, "gamma")
+	
 	if err != nil {
 		return nil, err
 	}
-	var gamma fr.Element
-	gamma.SetBytes(bgamma)
 
 	// Fiat Shamir this
 	eta, err := deriveRandomness(&fs, "eta")
@@ -367,7 +367,6 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 
 		return proof, nil
 	}
-
 	gateConstraintSetSmallY := evalsXOnAlpha[1:9]
 	chGateConstraintSetCanonicalY := make([]chan bool, 8)
 	chGateConstraintSetBigY := make([]chan bool, 8)
@@ -464,6 +463,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 
 	chHxCanonicalY := make(chan bool, 5)
 	chHxBigY := make(chan bool, 5)
+	
 	hxSetCanonicalY, hxSetBigYBitReversed := computeCanonicalAndBigFromSmallY(
 		[][]fr.Element{evalsXOnAlpha[0]}, // Hx(X, alpha)
 		[]chan bool{chHxCanonicalY},
@@ -471,9 +471,12 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		globalDomain[0],
 		globalDomain[1],
 	)
+	<-chHxBigY
 	hxCanonicalY, hxBigYBitReversed := hxSetCanonicalY[0], hxSetBigYBitReversed[0]
+	fmt.Println("hxCanonicalY", hxCanonicalY, len(hxCanonicalY), hxSetCanonicalY)
 	hxSetCanonicalY = nil
 	hxSetBigYBitReversed = nil
+	fmt.Println("hxCanonicalY2", hxCanonicalY, len(hxCanonicalY))
 
 	// compute Hy in canonical form
 	hyCanonical1, hyCanonical2, hyCanonical3 := computeQuotientCanonicalY(pk,
@@ -488,9 +491,10 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	if err := commitToQuotientOnY(hyCanonical1, hyCanonical2, hyCanonical3, proof, globalSRS); err != nil {
 		return nil, err
 	}
-
+	fmt.Println("Pre Beta")
 	// derive beta
 	beta, err := deriveRandomness(&fs, "beta", &proof.Hy[0], &proof.Hy[1], &proof.Hy[2])
+	fmt.Println("Post Beta")
 	if err != nil {
 		return nil, err
 	}
@@ -521,7 +525,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 			foldedHy[i].Add(&foldedHy[i], &hyCanonical1[i]) // (beta**(2M))*Hy3 + (beta**M)*Hy2 + Hy1
 		}
 	})
-
+	fmt.Println("Checkpoint 1")
 	var (
 		linearizedIdentitiesCanonicalY []fr.Element
 		linearizedIdentitiesDigest     curve.G1Affine
@@ -562,13 +566,13 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	if errLPoly != nil {
 		return nil, errLPoly
 	}
-
+	fmt.Println("Checkpoint 2")
 	openingPolysCanonicalY = append(openingPolysCanonicalY, linearizedIdentitiesCanonicalY)
 
 	var digestsY []curve.G1Affine
 	digestsY = append(digestsY, proof.PartialBatchedProof.ClaimedDigests[1:]...) // no hx
 	digestsY = append(digestsY, proof.PartialZShiftedOpening.ClaimedDigest, linearizedIdentitiesDigest)
-
+	fmt.Println("Checkpoint 3")
 	proof.BatchedProof, err = kzg.BatchOpenSinglePoint(
 		openingPolysCanonicalY,
 		digestsY,
@@ -580,7 +584,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	if err != nil {
 		return nil, err
 	}
-
+	fmt.Println("Checkpoint 4")
 	return proof, nil
 }
 
@@ -976,7 +980,7 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 // Z(Y, mu*alpha)G1(Y, alpha)G2(Y, alpha)G3(Y, alpha) - Z(Y, alpha)F1(Y, alpha)F2(Y, alpha)F3(Y, alpha)
 // on the big domain coset.
 func evaluatePermConstraintBigYBitReversed(pk *ProvingKey, lBigYBR, rBigYBR, oBigYBR, s1BigYBR, s2BigYBR, s3BigYBR, zBigYBR, zmuBigYBR []fr.Element, eta, gamma fr.Element) []fr.Element {
-	res := make([]fr.Element, globalDomain[0].Cardinality)
+	res := make([]fr.Element, globalDomain[1].Cardinality)
 
 	var cosetShift, cosetShiftSquare fr.Element
 	cosetShift.Set(&pk.Vk.CosetShift)
@@ -1027,6 +1031,7 @@ func evaluateBigXBitReversed(poly []fr.Element, domainH *fft.Domain) []fr.Elemen
 // on big domain coset.
 func computeCanonicalAndBigFromSmallY(smallEvals [][]fr.Element, chPolysDone []chan bool, chEvalsDone []chan bool, smallDomain *fft.Domain, bigDomain *fft.Domain) ([][]fr.Element, [][]fr.Element) {
 	num := len(smallEvals)
+	fmt.Println("Debug " , smallEvals, num)
 	polys := make([][]fr.Element, num)
 	bigEvals := make([][]fr.Element, num)
 
@@ -1047,7 +1052,8 @@ func computeCanonicalAndBigFromSmallY(smallEvals [][]fr.Element, chPolysDone []c
 			close(finished)
 		}(i, chEvalsDone[i])
 	}
-
+	
+	fmt.Println("Debug 2", polys, len(polys))
 	return polys, bigEvals
 }
 

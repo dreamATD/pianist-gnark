@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
+	"github.com/sunblaze-ucb/simpleMPI/mpi"
 
 	curve "github.com/consensys/gnark-crypto/ecc/bn254"
 	bn254witness "github.com/consensys/gnark/internal/backend/bn254/witness"
@@ -31,8 +32,8 @@ import (
 	"github.com/consensys/gnark/logger"
 
 	"github.com/consensys/gnark-crypto/ecc"
-	"github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/dkzg"
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
 )
 
 func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) error {
@@ -43,7 +44,7 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	hFunc := sha256.New()
 
 	// transcript to derive the challenge
-	fs := fiatshamir.NewTranscript(hFunc, "gamma", "eta", "lambda", "lambda", "eta")
+	fs := fiatshamir.NewTranscript(hFunc, "gamma", "eta", "lambda", "alpha", "beta")
 
 	// The first challenge is derived using the public data: the commitments to the permutation,
 	// the coefficients of the circuit, and the public inputs.
@@ -119,7 +120,6 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	if err != nil {
 		return fmt.Errorf("failed to fold proof on X = alpha: %v", err)
 	}
-
 	// Batch verify
 	var shiftedalpha fr.Element
 	shiftedalpha.Mul(&alpha, &vk.Generator)
@@ -241,7 +241,6 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	if err := kzg.BatchVerifySinglePoint(
 		append(proof.PartialBatchedProof.ClaimedDigests[1:],
 			proof.PartialZShiftedOpening.ClaimedDigest,
-			foldedHyDigest,
 			linearizedIdentitiesDigest,
 		),
 		&proof.BatchedProof,
@@ -297,20 +296,34 @@ func bindPublicData(fs *fiatshamir.Transcript, challenge string, vk VerifyingKey
 }
 
 func deriveRandomness(fs *fiatshamir.Transcript, challenge string, points ...*curve.G1Affine) (fr.Element, error) {
-	var buf [curve.SizeOfG1AffineUncompressed]byte
-	var r fr.Element
+	if mpi.SelfRank == 0{
+		var buf [curve.SizeOfG1AffineUncompressed]byte
+		var r fr.Element
 
-	for _, p := range points {
-		buf = p.RawBytes()
-		if err := fs.Bind(challenge, buf[:]); err != nil {
+		for _, p := range points {
+			buf = p.RawBytes()
+			if err := fs.Bind(challenge, buf[:]); err != nil {
+				return r, err
+			}
+		}
+
+		b, err := fs.ComputeChallenge(challenge)
+		if err != nil {
 			return r, err
 		}
+		r.SetBytes(b)
+		sendBuf := r.Bytes()
+		for i := 1; i < int(mpi.WorldSize); i++ {
+			mpi.SendBytes(sendBuf[:], uint64(i))
+		}
+		return r, nil
+	} else {
+		var r fr.Element
+		recvBuf, err := mpi.ReceiveBytes(fr.Bytes, 0)
+		if err != nil {
+			return r, err
+		}
+		r.SetBytes(recvBuf)
+		return r, nil
 	}
-
-	b, err := fs.ComputeChallenge(challenge)
-	if err != nil {
-		return r, err
-	}
-	r.SetBytes(b)
-	return r, nil
 }

@@ -162,16 +162,18 @@ func main() {
 		}
 
 		proof, err := piano.Prove(ccs, pk, witnessFull)
+		fmt.Println("Verifying proof...")
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		if mpi.SelfRank == 0 {
+			fmt.Println("Verifying proof...")
 			err = piano.Verify(proof, vk, witnessPublic)
 			if err == nil {
 				log.Fatal("Error: wrong proof is accepted")
 			}
 		}
 	}
-
+	fmt.Println("Done")
 }

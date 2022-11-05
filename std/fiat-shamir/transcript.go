@@ -18,6 +18,8 @@ package fiatshamir
 
 import (
 	"errors"
+	"fmt"
+	"runtime/debug"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/hash"
@@ -115,6 +117,9 @@ func (t *Transcript) ComputeChallenge(challengeID string) (frontend.Variable, er
 	// write the previous challenge if it's not the first challenge
 	if challenge.position != 0 {
 		if t.previous == nil || (t.previous.position != challenge.position-1) {
+			// print the function call stack
+			fmt.Println(string(debug.Stack()))
+			fmt.Println("???")
 			return nil, errPreviousChallengeNotComputed
 		}
 		t.h.Write(t.previous.value)
