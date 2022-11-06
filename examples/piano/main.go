@@ -19,6 +19,7 @@ import (
 	"log"
 
 	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/consensys/gnark/backend/piano"
 	"github.com/consensys/gnark/frontend/cs/scs"
 	"github.com/consensys/gnark/internal/backend/bn254/cs"
@@ -28,7 +29,7 @@ import (
 	"github.com/consensys/gnark/frontend"
 )
 
-// In this example we show how to use PIANO with KZG commitments. The circuit that is
+// In this example we show how to use PLONK with KZG commitments. The circuit that is
 // showed here is the same as in ../exponentiate.
 
 // Circuit y == x**e
@@ -47,7 +48,7 @@ type Circuit struct {
 func (circuit *Circuit) Define(api frontend.API) error {
 
 	// number of bits of exponent
-	const bitSize = 4000
+	const bitSize = 4
 
 	// specify constraints
 	output := frontend.Variable(1)
@@ -95,9 +96,9 @@ func main() {
 		// Witnesses instantiation. Witness is known only by the prover,
 		// while public w is a public data known by the verifier.
 		var w Circuit
-		w.X = 2
+		w.X = 12
 		w.E = 2
-		w.Y = 4
+		w.Y = 144
 
 		witnessFull, err := frontend.NewWitness(&w, ecc.BN254)
 		if err != nil {
@@ -112,7 +113,7 @@ func main() {
 		// public data consists the polynomials describing the constants involved
 		// in the constraints, the polynomial describing the permutation ("grand
 		// product argument"), and the FFT domains.
-		pk, vk, err := piano.Setup(ccs, dsrs, srs)
+		pk, vk, err := piano.Setup(ccs, dsrs, srs, witnessPublic)
 		//_, err := piano.Setup(r1cs, kate, &publicWitness)
 		if err != nil {
 			log.Fatal(err)
@@ -155,7 +156,7 @@ func main() {
 		// public data consists the polynomials describing the constants involved
 		// in the constraints, the polynomial describing the permutation ("grand
 		// product argument"), and the FFT domains.
-		pk, vk, err := piano.Setup(ccs, dsrs, srs)
+		pk, vk, err := piano.Setup(ccs, dsrs, srs, witnessPublic)
 		//_, err := piano.Setup(r1cs, kate, &publicWitness)
 		if err != nil {
 			log.Fatal(err)
@@ -176,4 +177,13 @@ func main() {
 		}
 	}
 	fmt.Println("Done")
+}
+
+// printVector prints a vector of fr.Element
+func printVector(name string, v []fr.Element) {
+	fmt.Printf("%s: ", name)
+	for _, e := range v {
+		fmt.Printf("%s ", e.String())
+	}
+	fmt.Println()
 }
