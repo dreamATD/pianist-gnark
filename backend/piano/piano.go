@@ -49,11 +49,15 @@ type VerifyingKey interface {
 }
 
 // Setup prepares the public data associated to a circuit + public inputs.
-func Setup(ccs frontend.CompiledConstraintSystem, dkzgSRS dkzg.SRS, kzgSRS kzg.SRS) (ProvingKey, VerifyingKey, error) {
+func Setup(ccs frontend.CompiledConstraintSystem, dkzgSRS dkzg.SRS, kzgSRS kzg.SRS, publicWitness *witness.Witness) (ProvingKey, VerifyingKey, error) {
 
 	switch tccs := ccs.(type) {
 	case *cs_bn254.SparseR1CS:
-		return piano_bn254.Setup(tccs, dkzgSRS.(*dkzg_bn254.SRS), kzgSRS.(*kzg_bn254.SRS))
+		w, ok := publicWitness.Vector.(*witness_bn254.Witness)
+		if !ok {
+			return nil, nil, witness.ErrInvalidWitness
+		}
+		return piano_bn254.Setup(tccs, dkzgSRS.(*dkzg_bn254.SRS), kzgSRS.(*kzg_bn254.SRS), *w)
 	default:
 		panic("unimplemented")
 	}

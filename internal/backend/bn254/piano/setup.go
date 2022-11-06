@@ -26,6 +26,7 @@ import (
 	"github.com/consensys/gnark/internal/backend/bn254/cs"
 	"github.com/sunblaze-ucb/simpleMPI/mpi"
 
+	bn254witness "github.com/consensys/gnark/internal/backend/bn254/witness"
 	dkzgg "github.com/consensys/gnark-crypto/dkzg"
 )
 
@@ -94,7 +95,7 @@ type VerifyingKey struct {
 }
 
 // Setup sets proving and verifying keys
-func Setup(spr *cs.SparseR1CS, dkzgSRS *dkzg.SRS, kzgSRS *kzg.SRS) (*ProvingKey, *VerifyingKey, error) {
+func Setup(spr *cs.SparseR1CS, dkzgSRS *dkzg.SRS, kzgSRS *kzg.SRS, publicWitness bn254witness.Witness) (*ProvingKey, *VerifyingKey, error) {
 	if mpi.SelfRank == 0 {
 		globalDomain[0] = fft.NewDomain(mpi.WorldSize)
 		if mpi.WorldSize < 6 {
@@ -149,8 +150,8 @@ func Setup(spr *cs.SparseR1CS, dkzgSRS *dkzg.SRS, kzgSRS *kzg.SRS) (*ProvingKey,
 		pk.Qr[i].SetZero()
 		pk.Qm[i].SetZero()
 		pk.Qo[i].SetZero()
-		pk.CQk[i].SetZero()
-		pk.LQk[i].SetZero() // → to be completed by the prover
+		pk.CQk[i].Set(&publicWitness[i])
+		pk.LQk[i].Set(&publicWitness[i])
 	}
 	offset := spr.NbPublicVariables
 	for i := 0; i < nbConstraints; i++ { // constraints
@@ -163,6 +164,12 @@ func Setup(spr *cs.SparseR1CS, dkzgSRS *dkzg.SRS, kzgSRS *kzg.SRS) (*ProvingKey,
 		pk.CQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
 		pk.LQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
 	}
+	// print pk.Ql, pk.Qr, pk.Qm, pk.Qo, pk.LQk
+	printVector("pk.Ql", pk.Ql)
+	printVector("pk.Qr", pk.Qr)
+	printVector("pk.Qm", pk.Qm)
+	printVector("pk.Qo", pk.Qo)
+	printVector("pk.LQk", pk.LQk)
 
 	pk.Domain[0].FFTInverse(pk.Ql, fft.DIF)
 	pk.Domain[0].FFTInverse(pk.Qr, fft.DIF)

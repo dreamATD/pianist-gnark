@@ -67,6 +67,7 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 
 	// derive lambda from Comm(l), Comm(r), Comm(o), Com(Z)
 	lambda, err := deriveRandomness(&fs, "lambda", &proof.Z)
+	lambda = fr.NewElement(0)
 	if err != nil {
 		return err
 	}
@@ -177,12 +178,11 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	ualpha.Mul(&alpha, &vk.CosetShift)
 	uualpha.Mul(&alpha, &vk.CosetShift)
 
-	var secondPart, tmp fr.Element
-	secondPart.Mul(&eta, &alpha).Add(&secondPart, &l).Add(&secondPart, &gamma)
-	tmp.Mul(&eta, &ualpha).Add(&tmp, &r).Add(&tmp, &gamma)
-	secondPart.Mul(&secondPart, &tmp)
-	tmp.Mul(&eta, &uualpha).Add(&tmp, &o).Add(&tmp, &gamma)
-	secondPart.Mul(&secondPart, &tmp).Mul(&secondPart, &z)
+	var secondPart, t1, t2, t3 fr.Element
+	t1.Mul(&eta, &alpha).Add(&t1, &l).Add(&t1, &gamma)
+	t2.Mul(&eta, &ualpha).Add(&t2, &r).Add(&t2, &gamma)
+	t3.Mul(&eta, &uualpha).Add(&t3, &o).Add(&t3, &gamma)
+	secondPart.Mul(&t1, &t2).Mul(&secondPart, &t3)
 	secondPart.Sub(&s1, &secondPart)
 
 	// third part L1(alpha) * (Z(beta, alpha)-1)
@@ -235,6 +235,11 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	var linearizedIdentitiesDigest curve.G1Affine
 	if _, err := linearizedIdentitiesDigest.MultiExp(points, scalars, ecc.MultiExpConfig{ScalarsMont: true}); err != nil {
 		return err
+	}
+
+	eval := proof.BatchedProof.ClaimedValues[len(proof.BatchedProof.ClaimedValues)-1]
+	if (eval != fr.NewElement(0)) {
+		return fmt.Errorf("evaluation of identities is %v, expected 0", eval)
 	}
 
 	// Fold the first proof

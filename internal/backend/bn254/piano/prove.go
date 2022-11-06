@@ -25,24 +25,19 @@ import (
 	"sync"
 	"time"
 
-	curve "github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
-
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/dkzg"
-	"github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
-
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/fft"
-
-	bn254witness "github.com/consensys/gnark/internal/backend/bn254/witness"
-
-	"github.com/consensys/gnark/internal/backend/bn254/cs"
-
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
 	"github.com/consensys/gnark-crypto/fiat-shamir"
 	"github.com/consensys/gnark/backend"
+	"github.com/consensys/gnark/internal/backend/bn254/cs"
 	"github.com/consensys/gnark/internal/utils"
 	"github.com/consensys/gnark/logger"
-
 	"github.com/sunblaze-ucb/simpleMPI/mpi"
+
+	curve "github.com/consensys/gnark-crypto/ecc/bn254"
+	bn254witness "github.com/consensys/gnark/internal/backend/bn254/witness"
 )
 
 var (
@@ -115,6 +110,11 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 
 	// query L, R, O in Lagrange basis, not blinded
 	lSmallX, rSmallX, oSmallX := evaluateLROSmallDomainX(spr, pk, solution)
+	
+	// print lSmallX, rSmallX, oSmallX
+	printVector("lSmallX", lSmallX)
+	printVector("rSmallX", rSmallX)
+	printVector("oSmallX", oSmallX)
 
 	// save lL, lR, lO, and make a copy of them in 
 	// canonical basis note that we allocate more capacity to reuse for blinded
@@ -185,6 +185,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 
 		// derive lambda from the Comm(L), Comm(R), Comm(O), Com(Z)
 		lambda, err = deriveRandomness(&fs, "lambda", &proof.Z)
+		lambda = fr.NewElement(0)
 		chZ <- err
 		close(chZ)
 	}()
@@ -200,15 +201,15 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	chEvalBR := make(chan struct{}, 1)
 	chEvalBO := make(chan struct{}, 1)
 	go func() {
-		blindedLBigXBitReversed = evaluateBigXBitReversed(blindedLCanonicalX, &pk.Domain[1])
+		blindedLBigXBitReversed = evaluateBigBitReversed(blindedLCanonicalX, &pk.Domain[1])
 		close(chEvalBL)
 	}()
 	go func() {
-		blindedRBigXBitReversed = evaluateBigXBitReversed(blindedRCanonicalX, &pk.Domain[1])
+		blindedRBigXBitReversed = evaluateBigBitReversed(blindedRCanonicalX, &pk.Domain[1])
 		close(chEvalBR)
 	}()
 	go func() {
-		blindedOBigXBitReversed = evaluateBigXBitReversed(blindedOCanonicalX, &pk.Domain[1])
+		blindedOBigXBitReversed = evaluateBigBitReversed(blindedOCanonicalX, &pk.Domain[1])
 		close(chEvalBO)
 	}()
 
@@ -217,10 +218,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	go func() {
 		// compute Qk in canonical basis, completed with the public inputs
 		qkCompletedCanonical := make([]fr.Element, pk.Domain[0].Cardinality)
-		copy(qkCompletedCanonical, fullWitness[:spr.NbPublicVariables])
-		copy(qkCompletedCanonical[spr.NbPublicVariables:], pk.LQk[spr.NbPublicVariables:])
-		pk.Domain[0].FFTInverse(qkCompletedCanonical, fft.DIF)
-		fft.BitReverse(qkCompletedCanonical)
+		copy(qkCompletedCanonical, pk.CQk)
 
 		// compute the evaluation of ql(X)l(X) + qr(X)r(X) + qm(X)l(X)r(X)
 		// + qo(X)o(X) + qk(X) on the big domain coset with the blinded version
@@ -245,7 +243,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 			return
 		}
 
-		blindedZBigXBitReversed = evaluateBigXBitReversed(blindedZCanonicalX, &pk.Domain[1])
+		blindedZBigXBitReversed = evaluateBigBitReversed(blindedZCanonicalX, &pk.Domain[1])
 		// compute z(muX)*g1(X)*g2(X)*g3(X) - z(X)*f1(X)*f2(X)*f3(X) on the
 		// coset of the big domain with the evaluations of the blinded
 		// versions of l(X), r(X), o(X) and z(X).
@@ -273,6 +271,8 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 
 	// compute Hx in canonical form
 	hx1, hx2, hx3 := computeQuotientCanonicalX(pk, gateConstraintBigXBitReversed, permConstraintBigXBitReversed, blindedZBigXBitReversed, lambda)
+
+	// print vector of hx1, hx2, hx3
 
 	// compute kzg commitments of Hx1, Hx2 and Hx3
 	if err := commitToQuotientX(hx1, hx2, hx3, proof, pk.Vk.KZGSRS); err != nil {
@@ -310,14 +310,14 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerNPlusTwo) // (alpha**(N+2))*Comm(Hx3) + alpha*Comm(Hx2)
 	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[0])                          // (alpha**(2(N+2)))*Comm(Hx3) + (alpha**(N+2))*Comm(Hx2) + Comm(Hx1)
 
-	// foldedHx = Hx1 + (alpha**N)*Hx2 + (alpha**(2N))*Hx3
+	// foldedHx = Hx1 + (alpha**(N+2))*Hx2 + (alpha**(2(N+2)))*Hx3
 	foldedHx := hx3
 	utils.Parallelize(len(foldedHx), func(start, end int) {
 		for i := start; i < end; i++ {
-			foldedHx[i].Mul(&foldedHx[i], &alphaPowerNPlusTwo) // (alpha**N)*Hx3
-			foldedHx[i].Add(&foldedHx[i], &hx2[i])             // (alpha**N)*Hx3 + Hx2
-			foldedHx[i].Mul(&foldedHx[i], &alphaPowerNPlusTwo) // (alpha**(2N))*Hx3 + (alpha**N)*Hx2
-			foldedHx[i].Add(&foldedHx[i], &hx1[i])             // (alpha**(2N))*Hx3 + (alpha**N)*Hx2 + Hx1
+			foldedHx[i].Mul(&foldedHx[i], &alphaPowerNPlusTwo) // (alpha**(N+2))*Hx3
+			foldedHx[i].Add(&foldedHx[i], &hx2[i])             // (alpha**(N+2))*Hx3 + Hx2
+			foldedHx[i].Mul(&foldedHx[i], &alphaPowerNPlusTwo) // (alpha**(2(N+2)))*Hx3 + (alpha**(N+2))*Hx2
+			foldedHx[i].Add(&foldedHx[i], &hx1[i])             // (alpha**(2(N+2)))*Hx3 + (alpha**(N+2))*Hx2 + Hx1
 		}
 	})
 
@@ -359,6 +359,19 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		pk.Vk.KZGSRS,
 	)
 
+	// DBG check whether constraints are satisfied
+	if err := checkConstraintX(
+		pk,
+		evalsXOnAlpha,
+		zShiftedAlpha,
+		gamma,
+		eta,
+		lambda,
+		alpha,
+	); err != nil {
+		return nil, err
+	}
+
 	if mpi.SelfRank != 0 {
 		log.Debug().Dur("took", time.Since(start)).Msg("prover done")
 		if err != nil {
@@ -368,18 +381,10 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		return proof, nil
 	}
 	gateConstraintSetSmallY := evalsXOnAlpha[1:9]
-	chGateConstraintSetCanonicalY := make([]chan bool, 8)
-	chGateConstraintSetBigY := make([]chan bool, 8)
-	for i := range chGateConstraintSetCanonicalY {
-		chGateConstraintSetCanonicalY[i] = make(chan bool, 1)
-		chGateConstraintSetBigY[i] = make(chan bool, 1)
-	}
 
 	// evaluate polynomials used in the gate constraint on the coset of the big
 	// domain in terms of Y
-	gateConstraintSetCanonicalY, gConstraintSetBigYBitReversed := computeCanonicalAndBigFromSmallY(gateConstraintSetSmallY,
-		chGateConstraintSetCanonicalY,
-		chGateConstraintSetBigY,
+	gateConstraintSetCanonicalY, gateConstraintSetBigYBitReversed := computeCanonicalAndBigFromSmallY(gateConstraintSetSmallY,
 		globalDomain[0],
 		globalDomain[1],
 	)
@@ -387,36 +392,24 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	var gateConstraintBigYBitReversed []fr.Element
 	chGateConstraint = make(chan struct{}, 1)
 	go func() {
-		for i := range chGateConstraintSetBigY {
-			<-chGateConstraintSetBigY[i]
-		}
-
 		gateConstraintBigYBitReversed = evaluateGateConstraintBigYBitReversed(
-			gConstraintSetBigYBitReversed[0], // L(Y, alpha)
-			gConstraintSetBigYBitReversed[1], // R(Y, alpha)
-			gConstraintSetBigYBitReversed[2], // O(Y, alpha)
-			gConstraintSetBigYBitReversed[3], // Ql(Y, alpha)
-			gConstraintSetBigYBitReversed[4], // Qr(Y, alpha)
-			gConstraintSetBigYBitReversed[5], // Qm(Y, alpha)
-			gConstraintSetBigYBitReversed[6], // Qo(Y, alpha)
-			gConstraintSetBigYBitReversed[7], // Qk(Y, alpha)
+			gateConstraintSetBigYBitReversed[0], // L(Y, alpha)
+			gateConstraintSetBigYBitReversed[1], // R(Y, alpha)
+			gateConstraintSetBigYBitReversed[2], // O(Y, alpha)
+			gateConstraintSetBigYBitReversed[3], // Ql(Y, alpha)
+			gateConstraintSetBigYBitReversed[4], // Qr(Y, alpha)
+			gateConstraintSetBigYBitReversed[5], // Qm(Y, alpha)
+			gateConstraintSetBigYBitReversed[6], // Qo(Y, alpha)
+			gateConstraintSetBigYBitReversed[7], // Qk(Y, alpha)
 		)
 		close(chGateConstraint)
 	}()
 
 	permConstraintSetSmallY := append(evalsXOnAlpha[9:], zShiftedAlpha)
-	chPermConstraintSetCanonicalY := make([]chan bool, 5)
-	chPermConstraintSetBigY := make([]chan bool, 5)
-	for i := range chPermConstraintSetCanonicalY {
-		chPermConstraintSetCanonicalY[i] = make(chan bool, 1)
-		chPermConstraintSetBigY[i] = make(chan bool, 1)
-	}
 
 	// evaluate polynomials used in the permutation constraint on the coset of
 	// the big domain in terms of Y
 	permConstraintSetCanonicalY, permConstraintSetBigYBitReverse := computeCanonicalAndBigFromSmallY(permConstraintSetSmallY,
-		chPermConstraintSetCanonicalY,
-		chPermConstraintSetBigY,
 		globalDomain[0],
 		globalDomain[1],
 	)
@@ -424,77 +417,52 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	var permConstraintBigYBitReverse []fr.Element
 	chPermConstraint = make(chan error, 1)
 	go func() {
-		for i := 0; i < 3; i++ {
-			<-chGateConstraintSetBigY[i]
-		}
-		for i := range chPermConstraintSetBigY {
-			<-chPermConstraintSetBigY[i]
-		}
-
-		if err := <-chZ; err != nil {
-			chPermConstraint <- err
-			return
-		}
-
 		// compute Zmu*G1*G2*G3 - Z*F1*F2*F3 on the coset of the big domain in
 		// terms of Y
 		permConstraintBigYBitReverse = evaluatePermConstraintBigYBitReversed(
 			pk,
-			gConstraintSetBigYBitReversed[0],	// L(Y, alpha)
-			gConstraintSetBigYBitReversed[1],	// R(Y, alpha)
-			gConstraintSetBigYBitReversed[2],	// O(Y, alpha)
-			permConstraintSetBigYBitReverse[0], // S1(Y, alpha)
-			permConstraintSetBigYBitReverse[1], // S2(Y, alpha)
-			permConstraintSetBigYBitReverse[2], // S3(Y, alpha)
-			permConstraintSetBigYBitReverse[3], // Z(Y, alpha)
-			permConstraintSetBigYBitReverse[4], // Z(Y, mu*alpha)
+			gateConstraintSetBigYBitReversed[0],	// L(Y, alpha)
+			gateConstraintSetBigYBitReversed[1],	// R(Y, alpha)
+			gateConstraintSetBigYBitReversed[2],	// O(Y, alpha)
+			permConstraintSetBigYBitReverse[0], 	// S1(Y, alpha)
+			permConstraintSetBigYBitReverse[1], 	// S2(Y, alpha)
+			permConstraintSetBigYBitReverse[2], 	// S3(Y, alpha)
+			permConstraintSetBigYBitReverse[3], 	// Z(Y, alpha)
+			permConstraintSetBigYBitReverse[4], 	// Z(Y, mu*alpha)
 			eta,
 			gamma,
+			alpha,
 		)
-		chPermConstraint <- nil
 		close(chPermConstraint)
 	}()
 
-	if err := <-chPermConstraint; err != nil {
-		return nil, err
-	}
-
-	<-chGateConstraint
-
-	chHxCanonicalY := make(chan bool, 5)
-	chHxBigY := make(chan bool, 5)
-	
 	hxSetCanonicalY, hxSetBigYBitReversed := computeCanonicalAndBigFromSmallY(
-		[][]fr.Element{evalsXOnAlpha[0]}, // Hx(X, alpha)
-		[]chan bool{chHxCanonicalY},
-		[]chan bool{chHxBigY},
+		[][]fr.Element{evalsXOnAlpha[0]}, // Hx(Y, alpha)
 		globalDomain[0],
 		globalDomain[1],
 	)
-	<-chHxBigY
 	hxCanonicalY, hxBigYBitReversed := hxSetCanonicalY[0], hxSetBigYBitReversed[0]
-	fmt.Println("hxCanonicalY", hxCanonicalY, len(hxCanonicalY), hxSetCanonicalY)
 	hxSetCanonicalY = nil
 	hxSetBigYBitReversed = nil
-	fmt.Println("hxCanonicalY2", hxCanonicalY, len(hxCanonicalY))
 
 	// compute Hy in canonical form
+	<-chPermConstraint
+	<-chGateConstraint
 	hyCanonical1, hyCanonical2, hyCanonical3 := computeQuotientCanonicalY(pk,
 		gateConstraintBigYBitReversed,
 		permConstraintBigYBitReverse,
 		permConstraintSetBigYBitReverse[3], // Z(Y, alpha)
 		hxBigYBitReversed,
 		lambda,
-		alpha)
+		alpha,
+	)
 
 	// compute kzg commitments of Hy1, Hy2 and Hy3
 	if err := commitToQuotientOnY(hyCanonical1, hyCanonical2, hyCanonical3, proof, globalSRS); err != nil {
 		return nil, err
 	}
-	fmt.Println("Pre Beta")
 	// derive beta
 	beta, err := deriveRandomness(&fs, "beta", &proof.Hy[0], &proof.Hy[1], &proof.Hy[2])
-	fmt.Println("Post Beta")
 	if err != nil {
 		return nil, err
 	}
@@ -509,7 +477,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	var bBetaPowerM big.Int
 	bSize.SetUint64(globalDomain[0].Cardinality)
 	var betaPowerM fr.Element
-	betaPowerM.Exp(alpha, &bSize)
+	betaPowerM.Exp(beta, &bSize)
 	betaPowerM.ToBigIntRegular(&bBetaPowerM)
 	foldedHyDigest := proof.Hy[2] // Hy3
 	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM)	// (beta**M)*Hy3
@@ -525,7 +493,21 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 			foldedHy[i].Add(&foldedHy[i], &hyCanonical1[i]) // (beta**(2M))*Hy3 + (beta**M)*Hy2 + Hy1
 		}
 	})
-	fmt.Println("Checkpoint 1")
+
+	// DBG check whether constraints are satisfied
+	if err := checkConstraintY(pk,
+		evalsOnBeta,
+		hxCanonicalY,
+		foldedHy,
+		gamma,
+		eta,
+		lambda,
+		alpha,
+		beta,
+	); err != nil {
+		return nil, err
+	}
+
 	var (
 		linearizedIdentitiesCanonicalY []fr.Element
 		linearizedIdentitiesDigest     curve.G1Affine
@@ -566,13 +548,11 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	if errLPoly != nil {
 		return nil, errLPoly
 	}
-	fmt.Println("Checkpoint 2")
 	openingPolysCanonicalY = append(openingPolysCanonicalY, linearizedIdentitiesCanonicalY)
 
 	var digestsY []curve.G1Affine
 	digestsY = append(digestsY, proof.PartialBatchedProof.ClaimedDigests[1:]...) // no hx
 	digestsY = append(digestsY, proof.PartialZShiftedOpening.ClaimedDigest, linearizedIdentitiesDigest)
-	fmt.Println("Checkpoint 3")
 	proof.BatchedProof, err = kzg.BatchOpenSinglePoint(
 		openingPolysCanonicalY,
 		digestsY,
@@ -584,7 +564,6 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("Checkpoint 4")
 	return proof, nil
 }
 
@@ -863,22 +842,22 @@ func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 	wg.Add(4)
 
 	go func() {
-		qlBigXBR = evaluateBigXBitReversed(pk.Ql, &pk.Domain[1])
+		qlBigXBR = evaluateBigBitReversed(pk.Ql, &pk.Domain[1])
 		wg.Done()
 	}()
 	go func() {
-		qrBigXBR = evaluateBigXBitReversed(pk.Qr, &pk.Domain[1])
+		qrBigXBR = evaluateBigBitReversed(pk.Qr, &pk.Domain[1])
 		wg.Done()
 	}()
 	go func() {
-		qmBigXBR = evaluateBigXBitReversed(pk.Qm, &pk.Domain[1])
+		qmBigXBR = evaluateBigBitReversed(pk.Qm, &pk.Domain[1])
 		wg.Done()
 	}()
 	go func() {
-		qoBigXBR = evaluateBigXBitReversed(pk.Qo, &pk.Domain[1])
+		qoBigXBR = evaluateBigBitReversed(pk.Qo, &pk.Domain[1])
 		wg.Done()
 	}()
-	qkBigXBR = evaluateBigXBitReversed(qkCX, &pk.Domain[1])
+	qkBigXBR = evaluateBigBitReversed(qkCX, &pk.Domain[1])
 	wg.Wait()
 
 	utils.Parallelize(len(qkBigXBR), func(start, end int) {
@@ -904,6 +883,7 @@ func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 // Ql(Y, alpha)L(Y, alpha) + Qr(Y, alpha)R(Y, alpha) + Qm(Y, alpha)L(Y, alpha)R(Y, alpha)
 // + Qo(Y, alpha)O(Y, alpha) + Qk(Y, alpha) on the big domain coset in terms of Y.
 func evaluateGateConstraintBigYBitReversed(lBigYBR, rBigYBR, oBigYBR, qlBigYBR, qrBigYBR, qmBigYBR, qoBigYBR, qkBigYBR []fr.Element) []fr.Element {
+	res := make([]fr.Element, len(lBigYBR))
 	utils.Parallelize(len(qkBigYBR), func(start, end int) {
 		var t0, t1 fr.Element
 		for i := start; i < end; i++ {
@@ -916,11 +896,11 @@ func evaluateGateConstraintBigYBitReversed(lBigYBR, rBigYBR, oBigYBR, qlBigYBR, 
 
 			t1.Mul(&qoBigYBR[i], &oBigYBR[i])
 			t0.Add(&t0, &t1)
-			qkBigYBR[i].Add(&t0, &qkBigYBR[i])
+			res[i].Add(&t0, &qkBigYBR[i])
 		}
 	})
 
-	return qkBigYBR
+	return res
 }
 
 // evaluatePermConstraintBigXBitReversed computes the evaluation of
@@ -979,7 +959,13 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 // evaluatePermConstraintBigYBitReversed computes the evaluation of
 // Z(Y, mu*alpha)G1(Y, alpha)G2(Y, alpha)G3(Y, alpha) - Z(Y, alpha)F1(Y, alpha)F2(Y, alpha)F3(Y, alpha)
 // on the big domain coset.
-func evaluatePermConstraintBigYBitReversed(pk *ProvingKey, lBigYBR, rBigYBR, oBigYBR, s1BigYBR, s2BigYBR, s3BigYBR, zBigYBR, zmuBigYBR []fr.Element, eta, gamma fr.Element) []fr.Element {
+// where G1 = L(Y, alpha) + eta*S1(Y, alpha) + gamma
+//       G2 = R(Y, alpha) + eta*S2(Y, alpha) + gamma
+//       G3 = O(Y, alpha) + eta*S3(Y, alpha) + gamma
+//       F1 = L(Y, alpha) + eta*alpha + gamma
+//       F2 = R(Y, alpha) + eta*U*alpha + gamma
+//       F3 = O(Y, alpha) + eta*U**2*alpha + gamma
+func evaluatePermConstraintBigYBitReversed(pk *ProvingKey, lBigYBR, rBigYBR, oBigYBR, s1BigYBR, s2BigYBR, s3BigYBR, zBigYBR, zmuBigYBR []fr.Element, eta, gamma, alpha fr.Element) []fr.Element {
 	res := make([]fr.Element, globalDomain[1].Cardinality)
 
 	var cosetShift, cosetShiftSquare fr.Element
@@ -988,17 +974,13 @@ func evaluatePermConstraintBigYBitReversed(pk *ProvingKey, lBigYBR, rBigYBR, oBi
 
 	utils.Parallelize(int(globalDomain[1].Cardinality), func(start, end int) {
 
-		var evaluationIDBigDomain fr.Element
-		evaluationIDBigDomain.Exp(globalDomain[1].Generator, big.NewInt(int64(start))).
-			Mul(&evaluationIDBigDomain, &globalDomain[1].FrMultiplicativeGen)
-
 		var f [3]fr.Element
 		var g [3]fr.Element
 
 		for i := start; i < end; i++ {
-			f[0].Mul(&evaluationIDBigDomain, &eta).Add(&f[0], &lBigYBR[i]).Add(&f[0], &gamma)
-			f[1].Mul(&evaluationIDBigDomain, &cosetShift).Mul(&f[1], &eta).Add(&f[1], &rBigYBR[i]).Add(&f[1], &gamma)
-			f[2].Mul(&evaluationIDBigDomain, &cosetShiftSquare).Mul(&f[2], &eta).Add(&f[2], &oBigYBR[i]).Add(&f[2], &gamma)
+			f[0].Mul(&alpha, &eta).Add(&f[0], &lBigYBR[i]).Add(&f[0], &gamma)
+			f[1].Mul(&alpha, &cosetShift).Mul(&f[1], &eta).Add(&f[1], &rBigYBR[i]).Add(&f[1], &gamma)
+			f[2].Mul(&alpha, &cosetShiftSquare).Mul(&f[2], &eta).Add(&f[2], &oBigYBR[i]).Add(&f[2], &gamma)
 
 			g[0].Mul(&s1BigYBR[i], &eta).Add(&g[0], &lBigYBR[i]).Add(&g[0], &gamma)
 			g[1].Mul(&s2BigYBR[i], &eta).Add(&g[1], &rBigYBR[i]).Add(&g[1], &gamma)
@@ -1008,19 +990,17 @@ func evaluatePermConstraintBigYBitReversed(pk *ProvingKey, lBigYBR, rBigYBR, oBi
 			g[0].Mul(&g[0], &g[1]).Mul(&g[0], &g[2]).Mul(&g[0], &zmuBigYBR[i])
 
 			res[i].Sub(&g[0], &f[0])
-
-			evaluationIDBigDomain.Mul(&evaluationIDBigDomain, &globalDomain[1].Generator)
 		}
 	})
 
 	return res
 }
 
-// evaluateBigXBitReversed evaluates poly (canonical form) of degree n<n' where
+// evaluateBigBitReversed evaluates poly (canonical form) of degree n<n' where
 // n'=domainH.Cardinality on the big domain (coset).
 //
 // Puts the result in res of size n'.
-func evaluateBigXBitReversed(poly []fr.Element, domainH *fft.Domain) []fr.Element {
+func evaluateBigBitReversed(poly []fr.Element, domainH *fft.Domain) []fr.Element {
 	res := make([]fr.Element, domainH.Cardinality)
 	copy(res, poly)
 	domainH.FFT(res, fft.DIF, true)
@@ -1029,31 +1009,40 @@ func evaluateBigXBitReversed(poly []fr.Element, domainH *fft.Domain) []fr.Elemen
 
 // computeCanonicalAndBigFromSmallY evaluates poly (lagrange on small domain)
 // on big domain coset.
-func computeCanonicalAndBigFromSmallY(smallEvals [][]fr.Element, chPolysDone []chan bool, chEvalsDone []chan bool, smallDomain *fft.Domain, bigDomain *fft.Domain) ([][]fr.Element, [][]fr.Element) {
+func computeCanonicalAndBigFromSmallY(smallEvals [][]fr.Element, smallDomain *fft.Domain, bigDomain *fft.Domain) ([][]fr.Element, [][]fr.Element) {
 	num := len(smallEvals)
-	fmt.Println("Debug " , smallEvals, num)
 	polys := make([][]fr.Element, num)
 	bigEvals := make([][]fr.Element, num)
 
-	// create and spawn ten goroutines
-	for i := range smallEvals {
+	chPolysDone := make([]chan bool, num)
+	chBigEvalsDone := make([]chan bool, num)
+	for i := 0; i < num; i++ {
+		chPolysDone[i] = make(chan bool, 1)
+		chBigEvalsDone[i] = make(chan bool, 1)
+	}
+
+	// create and spawn nums goroutines
+	for i := 0; i < num; i++ {
 		go func(index int, finished chan bool) {
-			poly := make([]fr.Element, smallDomain.Cardinality)
-			copy(poly, smallEvals[index])
-			smallDomain.FFTInverse(poly, fft.DIF)
-			fft.BitReverse(poly)
-			polys[index] = poly
+			polys[index] = make([]fr.Element, smallDomain.Cardinality)
+			copy(polys[index], smallEvals[index])
+			smallDomain.FFTInverse(polys[index], fft.DIF)
+			fft.BitReverse(polys[index])
 			close(finished)
 		}(i, chPolysDone[i])
 
 		go func(index int, finished chan bool) {
 			<-chPolysDone[index]
-			bigEvals[index] = evaluateBigXBitReversed(polys[index], bigDomain)
+			bigEvals[index] = evaluateBigBitReversed(polys[index], bigDomain)
 			close(finished)
-		}(i, chEvalsDone[i])
+		}(i, chBigEvalsDone[i])
+	}
+
+	// wait for all goroutines to finish
+	for i := 0; i < num; i++ {
+		<-chBigEvalsDone[i]
 	}
 	
-	fmt.Println("Debug 2", polys, len(polys))
 	return polys, bigEvals
 }
 
@@ -1127,9 +1116,10 @@ func computeQuotientCanonicalX(pk *ProvingKey, gateConstraintBigXBitReversed, pe
 
 	pk.Domain[1].FFTInverse(h, fft.DIT, true)
 
-	h1 := h[:pk.Domain[0].Cardinality+2]
-	h2 := h[pk.Domain[0].Cardinality+2 : 2*(pk.Domain[0].Cardinality+2)]
-	h3 := h[2*(pk.Domain[0].Cardinality+2) : 3*(pk.Domain[0].Cardinality+2)]
+	domainSizePlus2 := pk.Domain[0].Cardinality + 2
+	h1 := h[:domainSizePlus2]
+	h2 := h[domainSizePlus2 : 2*(domainSizePlus2)]
+	h3 := h[2*(domainSizePlus2) : 3*(domainSizePlus2)]
 
 	return h1, h2, h3
 
@@ -1175,10 +1165,11 @@ func computeQuotientCanonicalY(pk *ProvingKey, gateConstraintBigYBitReversed, pe
 			_i := bits.Reverse64(i) >> nn
 
 			t.Sub(&ZBigYBitReversed[_i], &one).Mul(&t, &lagrangeAlpha)
-			h[_i].Mul(&permConstraintBigYBitReversed[_i], &lambda).
+			h[_i].Mul(&t, &lambda).
+				Add(&h[_i], &permConstraintBigYBitReversed[_i]).
+				Mul(&h[_i], &lambda).
 				Add(&h[_i], &gateConstraintBigYBitReversed[_i]).
-				Mul(&h[_i], &evaluationXmMinusOneInverse[i%ratio]).
-				Add(&h[_i], &t)
+				Mul(&h[_i], &evaluationXmMinusOneInverse[i%ratio])
 		}
 	})
 
@@ -1261,4 +1252,182 @@ func computeLinearizedIdentities(pk *ProvingKey, l, r, o, ql, qr, qm, qo, qk, s1
 	})
 
 	return linPol
+}
+
+// checkConstraintX checks that the constraint is satisfied
+func checkConstraintX(pk *ProvingKey, evalsXOnAlpha [][]fr.Element, zShiftedAlpha []fr.Element, gamma, eta, lambda, alpha fr.Element) error {
+	// unpack vector evalsXOnAlpha on hx, l, r, o, ql, qr, qm, qo, qk, s1, s2, s3, z
+	hx := evalsXOnAlpha[0][mpi.SelfRank]
+	l := evalsXOnAlpha[1][mpi.SelfRank]
+	r := evalsXOnAlpha[2][mpi.SelfRank]
+	o := evalsXOnAlpha[3][mpi.SelfRank]
+	ql := evalsXOnAlpha[4][mpi.SelfRank]
+	qr := evalsXOnAlpha[5][mpi.SelfRank]
+	qm := evalsXOnAlpha[6][mpi.SelfRank]
+	qo := evalsXOnAlpha[7][mpi.SelfRank]
+	qk := evalsXOnAlpha[8][mpi.SelfRank]
+	s1 := evalsXOnAlpha[9][mpi.SelfRank]
+	s2 := evalsXOnAlpha[10][mpi.SelfRank]
+	s3 := evalsXOnAlpha[11][mpi.SelfRank]
+	z := evalsXOnAlpha[12][mpi.SelfRank]
+	zmu := zShiftedAlpha[mpi.SelfRank]
+	// first part: individual constraints
+	var firstPart fr.Element
+	ql.Mul(&ql, &l)
+	qr.Mul(&qr, &r)
+	qm.Mul(&qm, &l).Mul(&qm, &r)
+	qo.Mul(&qo, &o)
+	firstPart.Add(&ql, &qr).Add(&firstPart, &qm).Add(&firstPart, &qo).Add(&firstPart, &qk)
+
+	// second part:
+	// (L(beta, alpha)+eta*S1(beta, alpha)+gamma)*(R(beta, alpha)+eta*S2(beta, alpha)+gamma)*(O(beta, alpha)+eta*S3(alpha)+gamma) * Z(beta,mu*alpha)
+	// - (L(beta, alpha)+eta*id1(beta, alpha)+gamma)*(R(beta, alpha)+eta*id2(beta, alpha)+gamma)*(O(beta, alpha)+eta*id3(beta, alpha)+gamma)*Z(beta, alpha)
+	s1.Mul(&s1, &eta).Add(&s1, &l).Add(&s1, &gamma)
+	s2.Mul(&s2, &eta).Add(&s2, &r).Add(&s2, &gamma)
+	s3.Mul(&s3, &eta).Add(&s3, &o).Add(&s3, &gamma)
+	s1.Mul(&s1, &s2).Mul(&s1, &s3).Mul(&s1, &zmu)
+
+	var ualpha, uualpha fr.Element
+	ualpha.Mul(&alpha, &pk.Vk.CosetShift)
+	uualpha.Mul(&alpha, &pk.Vk.CosetShift)
+
+	var secondPart, tmp fr.Element
+	secondPart.Mul(&eta, &alpha).Add(&secondPart, &l).Add(&secondPart, &gamma)
+	tmp.Mul(&eta, &ualpha).Add(&tmp, &r).Add(&tmp, &gamma)
+	secondPart.Mul(&secondPart, &tmp)
+	tmp.Mul(&eta, &uualpha).Add(&tmp, &o).Add(&tmp, &gamma)
+	secondPart.Mul(&secondPart, &tmp).Mul(&secondPart, &z)
+	secondPart.Sub(&s1, &secondPart)
+
+	// third part L1(alpha)*(Z(beta, alpha) - 1)
+	var thirdPart, one, den, frNbElmt fr.Element
+	one.SetOne()
+	z.Sub(&z, &one)
+	nbElmt := int64(pk.Domain[0].Cardinality)
+	thirdPart.Set(&alpha).
+		Exp(thirdPart, big.NewInt(nbElmt)).
+		Sub(&thirdPart, &one)
+	frNbElmt.SetUint64(uint64(nbElmt))
+	den.Sub(&alpha, &one).
+		Inverse(&den)
+	thirdPart.Mul(&thirdPart, &den).
+						Mul(&thirdPart, &pk.Domain[0].CardinalityInv).
+						Mul(&thirdPart, &z)
+
+	// Put it all together
+	var result fr.Element
+	result.Mul(&thirdPart, &lambda).Add(&result, &secondPart).Mul(&result, &lambda).Add(&result, &firstPart)
+
+	var vanishingX fr.Element
+	vanishingX.Exp(alpha, big.NewInt(int64(pk.Domain[0].Cardinality)))
+	vanishingX.Sub(&vanishingX, &one)
+
+	var vH fr.Element
+	vH.Mul(&hx, &vanishingX)
+	result.Sub(&result, &vH)
+
+	// if result != 0 return error
+	if !result.IsZero() {
+		return fmt.Errorf("constraints are not satisfied: got %s, want 0", result.String())
+	}
+	return nil
+}
+
+// checkConstraintX checks that the constraint is satisfied
+func checkConstraintY(pk *ProvingKey, evalsXOnBeta []fr.Element, hxCanonicalX, foldedHy []fr.Element, gamma, eta, lambda, alpha, beta fr.Element) error {
+	// unpack vector evalsXOnAlpha on l, r, o, ql, qr, qm, qo, qk, s1, s2, s3, z, zmu
+	l := evalsXOnBeta[0]
+	r := evalsXOnBeta[1]
+	o := evalsXOnBeta[2]
+	ql := evalsXOnBeta[3]
+	qr := evalsXOnBeta[4]
+	qm := evalsXOnBeta[5]
+	qo := evalsXOnBeta[6]
+	qk := evalsXOnBeta[7]
+	s1 := evalsXOnBeta[8]
+	s2 := evalsXOnBeta[9]
+	s3 := evalsXOnBeta[10]
+	z := evalsXOnBeta[11]
+	zmu := evalsXOnBeta[12]
+	// first part: individual constraints
+	var firstPart fr.Element
+	ql.Mul(&ql, &l)
+	qr.Mul(&qr, &r)
+	qm.Mul(&qm, &l).Mul(&qm, &r)
+	qo.Mul(&qo, &o)
+	firstPart.Add(&ql, &qr).Add(&firstPart, &qm).Add(&firstPart, &qo).Add(&firstPart, &qk)
+
+	// second part:
+	// (L(beta, alpha)+eta*S1(beta, alpha)+gamma)*(R(beta, alpha)+eta*S2(beta, alpha)+gamma)*(O(beta, alpha)+eta*S3(alpha)+gamma) * Z(beta,mu*alpha)
+	// - (L(beta, alpha)+eta*id1(beta, alpha)+gamma)*(R(beta, alpha)+eta*id2(beta, alpha)+gamma)*(O(beta, alpha)+eta*id3(beta, alpha)+gamma)*Z(beta, alpha)
+	s1.Mul(&s1, &eta).Add(&s1, &l).Add(&s1, &gamma)
+	s2.Mul(&s2, &eta).Add(&s2, &r).Add(&s2, &gamma)
+	s3.Mul(&s3, &eta).Add(&s3, &o).Add(&s3, &gamma)
+	s1.Mul(&s1, &s2).Mul(&s1, &s3).Mul(&s1, &zmu)
+
+	var ualpha, uualpha fr.Element
+	ualpha.Mul(&alpha, &pk.Vk.CosetShift)
+	uualpha.Mul(&alpha, &pk.Vk.CosetShift)
+
+	var secondPart, tmp fr.Element
+	secondPart.Mul(&eta, &alpha).Add(&secondPart, &l).Add(&secondPart, &gamma)
+	tmp.Mul(&eta, &ualpha).Add(&tmp, &r).Add(&tmp, &gamma)
+	secondPart.Mul(&secondPart, &tmp)
+	tmp.Mul(&eta, &uualpha).Add(&tmp, &o).Add(&tmp, &gamma)
+	secondPart.Mul(&secondPart, &tmp).Mul(&secondPart, &z)
+	secondPart.Sub(&s1, &secondPart)
+
+	// third part L1(alpha)*(Z(beta, alpha) - 1)
+	var thirdPart, one, den, frNbElmt fr.Element
+	one.SetOne()
+	z.Sub(&z, &one)
+	nbElmt := int64(pk.Domain[0].Cardinality)
+	thirdPart.Set(&alpha).
+		Exp(thirdPart, big.NewInt(nbElmt)).
+		Sub(&thirdPart, &one)
+	frNbElmt.SetUint64(uint64(nbElmt))
+	den.Sub(&alpha, &one).
+		Inverse(&den)
+	thirdPart.Mul(&thirdPart, &den).
+						Mul(&thirdPart, &pk.Domain[0].CardinalityInv).
+						Mul(&thirdPart, &z)
+
+	// Put it all together
+	var result fr.Element
+	result.Mul(&thirdPart, &lambda).Add(&result, &secondPart).Mul(&result, &lambda).Add(&result, &firstPart)
+
+	var vanishingX fr.Element
+	vanishingX.Exp(alpha, big.NewInt(int64(pk.Domain[0].Cardinality)))
+	vanishingX.Sub(&vanishingX, &one)
+
+	hx := eval(hxCanonicalX, beta)
+
+	var vHx fr.Element
+	vHx.Mul(&hx, &vanishingX)
+	result.Sub(&result, &vHx)
+
+	var vanishingY fr.Element
+	vanishingY.Exp(beta, big.NewInt(int64(globalDomain[0].Cardinality)))
+	vanishingY.Sub(&vanishingY, &one)
+
+	hy := eval(foldedHy, beta)
+
+	var vHy fr.Element
+	vHy.Mul(&hy, &vanishingX)
+	result.Sub(&result, &vHy)
+
+	// if result != 0 return error
+	if !result.IsZero() {
+		return fmt.Errorf("constraints are not satisfied: got %s, want 0", result.String())
+	}
+	return nil
+}
+
+// printVector prints a vector of fr.Element
+func printVector(name string, v []fr.Element) {
+	fmt.Printf("%10s: ", name)
+	for _, e := range v {
+		fmt.Printf("%5s", e.String())
+	}
+	fmt.Println()
 }

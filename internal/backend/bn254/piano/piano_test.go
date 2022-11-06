@@ -21,21 +21,21 @@ import (
 
 	curve "github.com/consensys/gnark-crypto/ecc/bn254"
 
-	"github.com/consensys/gnark/internal/backend/bn254/cs"
+	// "github.com/consensys/gnark/internal/backend/bn254/cs"
 
-	bn254witness "github.com/consensys/gnark/internal/backend/bn254/witness"
+	// bn254witness "github.com/consensys/gnark/internal/backend/bn254/witness"
 
-	bn254piano "github.com/consensys/gnark/internal/backend/bn254/piano"
+	// bn254piano "github.com/consensys/gnark/internal/backend/bn254/piano"
 
-	"bytes"
+	// "bytes"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/dkzg"
 	"math/big"
 	"reflect"
-	"testing"
+	// "testing"
 
 	"github.com/consensys/gnark-crypto/ecc"
-	"github.com/consensys/gnark/backend"
+	// "github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/scs"
 )
@@ -93,138 +93,138 @@ func referenceCircuit() (frontend.CompiledConstraintSystem, frontend.Circuit, *d
 	return ccs, &good, dsrs, srs
 }
 
-func BenchmarkSetup(b *testing.B) {
-	ccs, _, dsrs, srs := referenceCircuit()
+// func BenchmarkSetup(b *testing.B) {
+// 	ccs, _, dsrs, srs := referenceCircuit()
 
-	b.ResetTimer()
+// 	b.ResetTimer()
 
-	b.Run("setup", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			_, _, _ = bn254piano.Setup(ccs.(*cs.SparseR1CS), dsrs, srs)
-		}
-	})
-}
+// 	b.Run("setup", func(b *testing.B) {
+// 		for i := 0; i < b.N; i++ {
+// 			_, _, _ = bn254piano.Setup(ccs.(*cs.SparseR1CS), dsrs, srs)
+// 		}
+// 	})
+// }
 
-func BenchmarkProver(b *testing.B) {
-	ccs, _solution, dsrs, srs := referenceCircuit()
-	fullWitness := bn254witness.Witness{}
-	_, err := fullWitness.FromAssignment(_solution, tVariable, false)
-	if err != nil {
-		b.Fatal(err)
-	}
+// func BenchmarkProver(b *testing.B) {
+// 	ccs, _solution, dsrs, srs := referenceCircuit()
+// 	fullWitness := bn254witness.Witness{}
+// 	_, err := fullWitness.FromAssignment(_solution, tVariable, false)
+// 	if err != nil {
+// 		b.Fatal(err)
+// 	}
 
-	pk, _, err := bn254piano.Setup(ccs.(*cs.SparseR1CS), dsrs, srs)
-	if err != nil {
-		b.Fatal(err)
-	}
+// 	pk, _, err := bn254piano.Setup(ccs.(*cs.SparseR1CS), dsrs, srs)
+// 	if err != nil {
+// 		b.Fatal(err)
+// 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, err = bn254piano.Prove(ccs.(*cs.SparseR1CS), pk, fullWitness, backend.ProverConfig{})
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
+// 	b.ResetTimer()
+// 	for i := 0; i < b.N; i++ {
+// 		_, err = bn254piano.Prove(ccs.(*cs.SparseR1CS), pk, fullWitness, backend.ProverConfig{})
+// 		if err != nil {
+// 			b.Fatal(err)
+// 		}
+// 	}
+// }
 
-func BenchmarkVerifier(b *testing.B) {
-	ccs, _solution, dsrs, srs := referenceCircuit()
-	fullWitness := bn254witness.Witness{}
-	_, err := fullWitness.FromAssignment(_solution, tVariable, false)
-	if err != nil {
-		b.Fatal(err)
-	}
-	publicWitness := bn254witness.Witness{}
-	_, err = publicWitness.FromAssignment(_solution, tVariable, true)
-	if err != nil {
-		b.Fatal(err)
-	}
+// func BenchmarkVerifier(b *testing.B) {
+// 	ccs, _solution, dsrs, srs := referenceCircuit()
+// 	fullWitness := bn254witness.Witness{}
+// 	_, err := fullWitness.FromAssignment(_solution, tVariable, false)
+// 	if err != nil {
+// 		b.Fatal(err)
+// 	}
+// 	publicWitness := bn254witness.Witness{}
+// 	_, err = publicWitness.FromAssignment(_solution, tVariable, true)
+// 	if err != nil {
+// 		b.Fatal(err)
+// 	}
 
-	pk, vk, err := bn254piano.Setup(ccs.(*cs.SparseR1CS), dsrs, srs)
-	if err != nil {
-		b.Fatal(err)
-	}
+// 	pk, vk, err := bn254piano.Setup(ccs.(*cs.SparseR1CS), dsrs, srs)
+// 	if err != nil {
+// 		b.Fatal(err)
+// 	}
 
-	proof, err := bn254piano.Prove(ccs.(*cs.SparseR1CS), pk, fullWitness, backend.ProverConfig{})
-	if err != nil {
-		panic(err)
-	}
+// 	proof, err := bn254piano.Prove(ccs.(*cs.SparseR1CS), pk, fullWitness, backend.ProverConfig{})
+// 	if err != nil {
+// 		panic(err)
+// 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = bn254piano.Verify(proof, vk, publicWitness)
-	}
-}
+// 	b.ResetTimer()
+// 	for i := 0; i < b.N; i++ {
+// 		_ = bn254piano.Verify(proof, vk, publicWitness)
+// 	}
+// }
 
-func BenchmarkSerialization(b *testing.B) {
-	ccs, _solution, dsrs, srs := referenceCircuit()
-	fullWitness := bn254witness.Witness{}
-	_, err := fullWitness.FromAssignment(_solution, tVariable, false)
-	if err != nil {
-		b.Fatal(err)
-	}
+// func BenchmarkSerialization(b *testing.B) {
+// 	ccs, _solution, dsrs, srs := referenceCircuit()
+// 	fullWitness := bn254witness.Witness{}
+// 	_, err := fullWitness.FromAssignment(_solution, tVariable, false)
+// 	if err != nil {
+// 		b.Fatal(err)
+// 	}
 
-	pk, _, err := bn254piano.Setup(ccs.(*cs.SparseR1CS), dsrs, srs)
-	if err != nil {
-		b.Fatal(err)
-	}
+// 	pk, _, err := bn254piano.Setup(ccs.(*cs.SparseR1CS), dsrs, srs)
+// 	if err != nil {
+// 		b.Fatal(err)
+// 	}
 
-	proof, err := bn254piano.Prove(ccs.(*cs.SparseR1CS), pk, fullWitness, backend.ProverConfig{})
-	if err != nil {
-		b.Fatal(err)
-	}
+// 	proof, err := bn254piano.Prove(ccs.(*cs.SparseR1CS), pk, fullWitness, backend.ProverConfig{})
+// 	if err != nil {
+// 		b.Fatal(err)
+// 	}
 
-	b.ReportAllocs()
+// 	b.ReportAllocs()
 
-	// ---------------------------------------------------------------------------------------------
-	// bn254piano.ProvingKey binary serialization
-	b.Run("pk: binary serialization (bn254piano.ProvingKey)", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			var buf bytes.Buffer
-			_, _ = pk.WriteTo(&buf)
-		}
-	})
-	b.Run("pk: binary deserialization (bn254piano.ProvingKey)", func(b *testing.B) {
-		var buf bytes.Buffer
-		_, _ = pk.WriteTo(&buf)
-		var pkReconstructed bn254piano.ProvingKey
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			buf := bytes.NewBuffer(buf.Bytes())
-			_, _ = pkReconstructed.ReadFrom(buf)
-		}
-	})
-	{
-		var buf bytes.Buffer
-		_, _ = pk.WriteTo(&buf)
-	}
+// 	// ---------------------------------------------------------------------------------------------
+// 	// bn254piano.ProvingKey binary serialization
+// 	b.Run("pk: binary serialization (bn254piano.ProvingKey)", func(b *testing.B) {
+// 		b.ResetTimer()
+// 		for i := 0; i < b.N; i++ {
+// 			var buf bytes.Buffer
+// 			_, _ = pk.WriteTo(&buf)
+// 		}
+// 	})
+// 	b.Run("pk: binary deserialization (bn254piano.ProvingKey)", func(b *testing.B) {
+// 		var buf bytes.Buffer
+// 		_, _ = pk.WriteTo(&buf)
+// 		var pkReconstructed bn254piano.ProvingKey
+// 		b.ResetTimer()
+// 		for i := 0; i < b.N; i++ {
+// 			buf := bytes.NewBuffer(buf.Bytes())
+// 			_, _ = pkReconstructed.ReadFrom(buf)
+// 		}
+// 	})
+// 	{
+// 		var buf bytes.Buffer
+// 		_, _ = pk.WriteTo(&buf)
+// 	}
 
-	// ---------------------------------------------------------------------------------------------
-	// bn254piano.Proof binary serialization
-	b.Run("proof: binary serialization (bn254piano.Proof)", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			var buf bytes.Buffer
-			_, _ = proof.WriteTo(&buf)
-		}
-	})
-	b.Run("proof: binary deserialization (bn254piano.Proof)", func(b *testing.B) {
-		var buf bytes.Buffer
-		_, _ = proof.WriteTo(&buf)
-		var proofReconstructed bn254piano.Proof
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			buf := bytes.NewBuffer(buf.Bytes())
-			_, _ = proofReconstructed.ReadFrom(buf)
-		}
-	})
-	{
-		var buf bytes.Buffer
-		_, _ = proof.WriteTo(&buf)
-	}
+// 	// ---------------------------------------------------------------------------------------------
+// 	// bn254piano.Proof binary serialization
+// 	b.Run("proof: binary serialization (bn254piano.Proof)", func(b *testing.B) {
+// 		b.ResetTimer()
+// 		for i := 0; i < b.N; i++ {
+// 			var buf bytes.Buffer
+// 			_, _ = proof.WriteTo(&buf)
+// 		}
+// 	})
+// 	b.Run("proof: binary deserialization (bn254piano.Proof)", func(b *testing.B) {
+// 		var buf bytes.Buffer
+// 		_, _ = proof.WriteTo(&buf)
+// 		var proofReconstructed bn254piano.Proof
+// 		b.ResetTimer()
+// 		for i := 0; i < b.N; i++ {
+// 			buf := bytes.NewBuffer(buf.Bytes())
+// 			_, _ = proofReconstructed.ReadFrom(buf)
+// 		}
+// 	})
+// 	{
+// 		var buf bytes.Buffer
+// 		_, _ = proof.WriteTo(&buf)
+// 	}
 
-}
+// }
 
 var tVariable reflect.Type
 
