@@ -43,12 +43,7 @@ func NewKZGSRSPair(ccs frontend.CompiledConstraintSystem) (dkzg.SRS, kzg.SRS, er
 	sizeSystem := nbConstraints + public
 	kzgSize := ecc.NextPowerOfTwo(uint64(sizeSystem)) + 3
 
-	if kzgSize <= dsrsCachedSize {
-		return getCachedDSRS(ccs)
-	}
-
 	return newKZGSRSPair(ccs.CurveID(), kzgSize)
-
 }
 
 var dsrsCache map[ecc.ID]srsPair

@@ -39,34 +39,13 @@ type Circuit struct {
 	// default uses variable name and secret visibility.
 	X frontend.Variable `gnark:",public"`
 	Y frontend.Variable `gnark:",public"`
-
-	E frontend.Variable
 }
 
 // Define declares the circuit's constraints
 // y == x**e
 func (circuit *Circuit) Define(api frontend.API) error {
 
-	// number of bits of exponent
-	const bitSize = 4
-
-	// specify constraints
-	output := frontend.Variable(1)
-	bits := api.ToBinary(circuit.E, bitSize)
-
-	for i := 0; i < len(bits); i++ {
-		// api.Println(fmt.Sprintf("e[%d]", i), bits[i]) // we may print a variable for testing and / or debugging purposes
-
-		if i != 0 {
-			output = api.Mul(output, output)
-		}
-		multiply := api.Mul(output, circuit.X)
-		output = api.Select(bits[len(bits)-1-i], multiply, output)
-
-	}
-
-	api.AssertIsEqual(circuit.Y, output)
-
+	api.AssertIsEqual(circuit.X, circuit.Y)
 	return nil
 }
 
@@ -97,8 +76,7 @@ func main() {
 		// while public w is a public data known by the verifier.
 		var w Circuit
 		w.X = 12
-		w.E = 2
-		w.Y = 144
+		w.Y = 12
 
 		witnessFull, err := frontend.NewWitness(&w, ecc.BN254)
 		if err != nil {
@@ -131,51 +109,52 @@ func main() {
 			}
 		}
 	}
-	// Wrong data: the proof fails
-	{
-		// Witnesses instantiation. Witness is known only by the prover,
-		// while public w is a public data known by the verifier.
-		var w, pW Circuit
-		w.X = 2
-		w.E = 12
-		w.Y = 4096
+	/*
+		// Wrong data: the proof fails
+		{
+			// Witnesses instantiation. Witness is known only by the prover,
+			// while public w is a public data known by the verifier.
+			var w, pW Circuit
+			w.X = 2
+			w.Y = 4096
 
-		pW.X = 3
-		pW.Y = 4096
+			pW.X = 3
+			pW.Y = 4096
 
-		witnessFull, err := frontend.NewWitness(&w, ecc.BN254)
-		if err != nil {
-			log.Fatal(err)
-		}
+			witnessFull, err := frontend.NewWitness(&w, ecc.BN254)
+			if err != nil {
+				log.Fatal(err)
+			}
 
-		witnessPublic, err := frontend.NewWitness(&pW, ecc.BN254, frontend.PublicOnly())
-		if err != nil {
-			log.Fatal(err)
-		}
+			witnessPublic, err := frontend.NewWitness(&pW, ecc.BN254, frontend.PublicOnly())
+			if err != nil {
+				log.Fatal(err)
+			}
 
-		// public data consists the polynomials describing the constants involved
-		// in the constraints, the polynomial describing the permutation ("grand
-		// product argument"), and the FFT domains.
-		pk, vk, err := piano.Setup(ccs, dsrs, srs, witnessPublic)
-		//_, err := piano.Setup(r1cs, kate, &publicWitness)
-		if err != nil {
-			log.Fatal(err)
-		}
+			// public data consists the polynomials describing the constants involved
+			// in the constraints, the polynomial describing the permutation ("grand
+			// product argument"), and the FFT domains.
+			pk, vk, err := piano.Setup(ccs, dsrs, srs, witnessPublic)
+			//_, err := piano.Setup(r1cs, kate, &publicWitness)
+			if err != nil {
+				log.Fatal(err)
+			}
 
-		proof, err := piano.Prove(ccs, pk, witnessFull)
-		fmt.Println("Verifying proof...")
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		if mpi.SelfRank == 0 {
+			proof, err := piano.Prove(ccs, pk, witnessFull)
 			fmt.Println("Verifying proof...")
-			err = piano.Verify(proof, vk, witnessPublic)
-			if err == nil {
-				log.Fatal("Error: wrong proof is accepted")
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			if mpi.SelfRank == 0 {
+				fmt.Println("Verifying proof...")
+				err = piano.Verify(proof, vk, witnessPublic)
+				if err == nil {
+					log.Fatal("Error: wrong proof is accepted")
+				}
 			}
 		}
-	}
+	*/
 	fmt.Println("Done")
 }
 

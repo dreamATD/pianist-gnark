@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"math/bits"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -359,6 +360,15 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		pk.Vk.KZGSRS,
 	)
 
+	if mpi.SelfRank != 0 {
+		log.Debug().Dur("took", time.Since(start)).Msg("prover done")
+		if err != nil {
+			return nil, err
+		}
+
+		return proof, nil
+	}
+
 	// DBG check whether constraints are satisfied
 	if err := checkConstraintX(
 		pk,
@@ -372,14 +382,6 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		return nil, err
 	}
 
-	if mpi.SelfRank != 0 {
-		log.Debug().Dur("took", time.Since(start)).Msg("prover done")
-		if err != nil {
-			return nil, err
-		}
-
-		return proof, nil
-	}
 	gateConstraintSetSmallY := evalsXOnAlpha[1:9]
 
 	// evaluate polynomials used in the gate constraint on the coset of the big
@@ -448,6 +450,10 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	// compute Hy in canonical form
 	<-chPermConstraint
 	<-chGateConstraint
+
+	for i := range gateConstraintBigYBitReversed {
+		fmt.Println("gateConstraintBigYBitReversed", i, gateConstraintBigYBitReversed[i].String())
+	}
 	hyCanonical1, hyCanonical2, hyCanonical3 := computeQuotientCanonicalY(pk,
 		gateConstraintBigYBitReversed,
 		permConstraintBigYBitReverse,
@@ -560,8 +566,26 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		hFunc,
 		globalSRS,
 	)
-
+	for i := 0; i < len(openingPolysCanonicalY); i++ {
+		digest, _ := kzg.Commit(openingPolysCanonicalY[i], globalSRS)
+		proofString, err := kzg.Open(openingPolysCanonicalY[i], beta, globalSRS)
+		if err != nil {
+			fmt.Println("error opening poly", i, err)
+			return nil, err
+		}
+		err = kzg.Verify(&digest, &proofString, beta, globalSRS)
+		if err != nil {
+			fmt.Println("error verifying poly233", i, err)
+		}
+		
+	}
 	if err != nil {
+		return nil, err
+	}
+
+	err = kzg.BatchVerifySinglePoint(digestsY, &proof.BatchedProof, beta, hFunc, globalSRS)
+	if err != nil {
+		fmt.Println("batch verify failed")
 		return nil, err
 	}
 	return proof, nil
@@ -726,6 +750,8 @@ func blindPoly(cp []fr.Element, rou, bo uint64) ([]fr.Element, error) {
 	// random polynomial
 	blindingPoly := make([]fr.Element, bo+1)
 	for i := uint64(0); i < bo+1; i++ {
+		blindingPoly[i] = fr.NewElement(0)
+		continue
 		if _, err := blindingPoly[i].SetRandom(); err != nil {
 			return nil, err
 		}
@@ -1178,6 +1204,11 @@ func computeQuotientCanonicalY(pk *ProvingKey, gateConstraintBigYBitReversed, pe
 	h1 := h[:globalDomain[0].Cardinality]
 	h2 := h[globalDomain[0].Cardinality : 2*globalDomain[0].Cardinality]
 	h3 := h[2*globalDomain[0].Cardinality : 3*globalDomain[0].Cardinality]
+	for i := 0; i < int(globalDomain[0].Cardinality); i++ {
+		fmt.Println("h1", h1[i].String())
+		fmt.Println("h2", h2[i].String())
+		fmt.Println("h3", h3[i].String())
+	}
 	return h1, h2, h3
 }
 
@@ -1328,6 +1359,7 @@ func checkConstraintX(pk *ProvingKey, evalsXOnAlpha [][]fr.Element, zShiftedAlph
 
 	// if result != 0 return error
 	if !result.IsZero() {
+		fmt.Println(debug.Stack())
 		return fmt.Errorf("constraints are not satisfied: got %s, want 0", result.String())
 	}
 	return nil
@@ -1411,13 +1443,15 @@ func checkConstraintY(pk *ProvingKey, evalsXOnBeta []fr.Element, hxCanonicalX, f
 	vanishingY.Sub(&vanishingY, &one)
 
 	hy := eval(foldedHy, beta)
+	fmt.Println("hy", hy.String())
 
 	var vHy fr.Element
-	vHy.Mul(&hy, &vanishingX)
+	vHy.Mul(&hy, &vanishingY)
 	result.Sub(&result, &vHy)
 
 	// if result != 0 return error
 	if !result.IsZero() {
+		fmt.Println(string(debug.Stack()))
 		return fmt.Errorf("constraints are not satisfied: got %s, want 0", result.String())
 	}
 	return nil

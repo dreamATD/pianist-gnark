@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"math/big"
+	"runtime/debug"
 	"time"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
@@ -146,6 +147,7 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	// derive beta
 	beta, err := deriveRandomness(&fs, "beta", &proof.Hy[0], &proof.Hy[1], &proof.Hy[2])
 	if err != nil {
+		fmt.Println(string(debug.Stack()))
 		return err
 	}
 
@@ -234,6 +236,7 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 
 	var linearizedIdentitiesDigest curve.G1Affine
 	if _, err := linearizedIdentitiesDigest.MultiExp(points, scalars, ecc.MultiExpConfig{ScalarsMont: true}); err != nil {
+		fmt.Println(string(debug.Stack()))
 		return err
 	}
 
@@ -249,10 +252,11 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 			linearizedIdentitiesDigest,
 		),
 		&proof.BatchedProof,
-		beta,
+		beta,  // not consistent with the prover
 		hFunc,
 		globalSRS,
 	); err != nil {
+		fmt.Println(string(debug.Stack()))
 		return err
 	}
 
@@ -301,6 +305,14 @@ func bindPublicData(fs *fiatshamir.Transcript, challenge string, vk VerifyingKey
 }
 
 func deriveRandomness(fs *fiatshamir.Transcript, challenge string, points ...*curve.G1Affine) (fr.Element, error) {
+	
+	var gen fr.Element
+	gen[0] = 9184314736506630027
+	gen[1] = 6863229837856182560
+	gen[2] = 10210050104002964590
+	gen[3] = 3114093135882422479
+
+	//fmt.Println(gen.String())
 	if mpi.SelfRank == 0{
 		var buf [curve.SizeOfG1AffineUncompressed]byte
 		var r fr.Element
@@ -308,12 +320,18 @@ func deriveRandomness(fs *fiatshamir.Transcript, challenge string, points ...*cu
 		for _, p := range points {
 			buf = p.RawBytes()
 			if err := fs.Bind(challenge, buf[:]); err != nil {
+				if challenge == "alpha" {
+				//	return fr.NewElement(0), err
+				}
 				return r, err
 			}
 		}
 
 		b, err := fs.ComputeChallenge(challenge)
 		if err != nil {
+			if challenge == "alpha" {
+			//	return fr.NewElement(0), err
+			}
 			return r, err
 		}
 		r.SetBytes(b)
@@ -321,14 +339,23 @@ func deriveRandomness(fs *fiatshamir.Transcript, challenge string, points ...*cu
 		for i := 1; i < int(mpi.WorldSize); i++ {
 			mpi.SendBytes(sendBuf[:], uint64(i))
 		}
+		if challenge == "alpha" {
+		//	return fr.NewElement(0), err
+		}
 		return r, nil
 	} else {
 		var r fr.Element
 		recvBuf, err := mpi.ReceiveBytes(fr.Bytes, 0)
 		if err != nil {
+			if challenge == "alpha" {
+			//	return fr.NewElement(0), err
+			}
 			return r, err
 		}
 		r.SetBytes(recvBuf)
+		if challenge == "alpha" {
+		//	return fr.NewElement(0), err
+		}
 		return r, nil
 	}
 }
