@@ -114,7 +114,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	// save lL, lR, lO, and make a copy of them in 
 	// canonical basis note that we allocate more capacity to reuse for blinded
 	// polynomials
-	blindedLCanonicalX, blindedRCanonicalX, blindedOCanonicalX, err := computeBlindedLROCanonicalX(
+	blindedLCanonicalX, blindedRCanonicalX, blindedOCanonicalX, err := computeLROCanonicalX(
 		lSmallX,
 		rSmallX,
 		oSmallX,
@@ -293,26 +293,26 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		return nil, err
 	}
 
-	// foldedHDigest = Comm(Hx1) + (alpha**(N+2))*Comm(Hx2) + (alpha**(2(N+2)))*Comm(Hx3)
+	// foldedHDigest = Comm(Hx1) + (alpha**(N))*Comm(Hx2) + (alpha**(2(N)))*Comm(Hx3)
 	var bAlphaPowerNPlusTwo, bSize big.Int
-	bSize.SetUint64(pk.Domain[0].Cardinality + 2) // +2 because of the masking (H of degree 3(n+2)-1)
+	bSize.SetUint64(pk.Domain[0].Cardinality)
 	var alphaPowerNPlusTwo fr.Element
 	alphaPowerNPlusTwo.Exp(alpha, &bSize)
 	alphaPowerNPlusTwo.ToBigIntRegular(&bAlphaPowerNPlusTwo)
 	foldedHxDigest := proof.Hx[2]
 	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerNPlusTwo) // alpha*Comm(Hx3)
 	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[1]) 						   // alpha*Comm(Hx3) + Comm(Hx2)
-	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerNPlusTwo) // (alpha**(N+2))*Comm(Hx3) + alpha*Comm(Hx2)
-	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[0])                          // (alpha**(2(N+2)))*Comm(Hx3) + (alpha**(N+2))*Comm(Hx2) + Comm(Hx1)
+	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerNPlusTwo) // (alpha**(N))*Comm(Hx3) + alpha*Comm(Hx2)
+	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[0])                          // (alpha**(2(N)))*Comm(Hx3) + (alpha**(N))*Comm(Hx2) + Comm(Hx1)
 
-	// foldedHx = Hx1 + (alpha**(N+2))*Hx2 + (alpha**(2(N+2)))*Hx3
+	// foldedHx = Hx1 + (alpha**(N))*Hx2 + (alpha**(2(N)))*Hx3
 	foldedHx := hx3
 	utils.Parallelize(len(foldedHx), func(start, end int) {
 		for i := start; i < end; i++ {
-			foldedHx[i].Mul(&foldedHx[i], &alphaPowerNPlusTwo) // (alpha**(N+2))*Hx3
-			foldedHx[i].Add(&foldedHx[i], &hx2[i])             // (alpha**(N+2))*Hx3 + Hx2
-			foldedHx[i].Mul(&foldedHx[i], &alphaPowerNPlusTwo) // (alpha**(2(N+2)))*Hx3 + (alpha**(N+2))*Hx2
-			foldedHx[i].Add(&foldedHx[i], &hx1[i])             // (alpha**(2(N+2)))*Hx3 + (alpha**(N+2))*Hx2 + Hx1
+			foldedHx[i].Mul(&foldedHx[i], &alphaPowerNPlusTwo) // (alpha**(N))*Hx3
+			foldedHx[i].Add(&foldedHx[i], &hx2[i])             // (alpha**(N))*Hx3 + Hx2
+			foldedHx[i].Mul(&foldedHx[i], &alphaPowerNPlusTwo) // (alpha**(2(N)))*Hx3 + (alpha**(N))*Hx2
+			foldedHx[i].Add(&foldedHx[i], &hx1[i])             // (alpha**(2(N)))*Hx3 + (alpha**(N))*Hx2 + Hx1
 		}
 	})
 
@@ -674,35 +674,28 @@ func commitToQuotientOnY(h1, h2, h3 []fr.Element, proof *Proof, srs *kzg.SRS) er
 	return err1
 }
 
-func computeBlindedLROCanonicalX(ll, lr, lo []fr.Element, domain *fft.Domain) (bcl, bcr, bco []fr.Element, err error) {
-	cl := make([]fr.Element, domain.Cardinality, domain.Cardinality+2)
-	cr := make([]fr.Element, domain.Cardinality, domain.Cardinality+2)
-	co := make([]fr.Element, domain.Cardinality, domain.Cardinality+2)
+func computeLROCanonicalX(ll, lr, lo []fr.Element, domain *fft.Domain) (cl, cr, co []fr.Element, err error) {
+	cl = make([]fr.Element, domain.Cardinality)
+	cr = make([]fr.Element, domain.Cardinality)
+	co = make([]fr.Element, domain.Cardinality)
 
 	chDone := make(chan error, 2)
 
 	go func() {
-		var err error
 		copy(cl, ll)
 		domain.FFTInverse(cl, fft.DIF)
 		fft.BitReverse(cl)
-		bcl, err = blindPoly(cl, domain.Cardinality, 1)
-		chDone <- err
+		chDone <- nil
 	}()
 	go func() {
-		var err error
 		copy(cr, lr)
 		domain.FFTInverse(cr, fft.DIF)
 		fft.BitReverse(cr)
-		bcr, err = blindPoly(cr, domain.Cardinality, 1)
-		chDone <- err
+		chDone <- nil
 	}()
 	copy(co, lo)
 	domain.FFTInverse(co, fft.DIF)
 	fft.BitReverse(co)
-	if bco, err = blindPoly(co, domain.Cardinality, 1); err != nil {
-		return
-	}
 	err = <-chDone
 	if err != nil {
 		return
@@ -731,7 +724,6 @@ func blindPoly(cp []fr.Element, rou, bo uint64) ([]fr.Element, error) {
 	// random polynomial
 	blindingPoly := make([]fr.Element, bo+1)
 	for i := uint64(0); i < bo+1; i++ {
-		blindingPoly[i] = fr.NewElement(0)
 		continue
 		if _, err := blindingPoly[i].SetRandom(); err != nil {
 			return nil, err
@@ -1123,10 +1115,10 @@ func computeQuotientCanonicalX(pk *ProvingKey, gateConstraintBigXBitReversed, pe
 
 	pk.Domain[1].FFTInverse(h, fft.DIT, true)
 
-	domainSizePlus2 := pk.Domain[0].Cardinality + 2
-	h1 := h[:domainSizePlus2]
-	h2 := h[domainSizePlus2 : 2*(domainSizePlus2)]
-	h3 := h[2*(domainSizePlus2) : 3*(domainSizePlus2)]
+	domainSize := pk.Domain[0].Cardinality
+	h1 := h[:domainSize]
+	h2 := h[domainSize : 2*(domainSize)]
+	h3 := h[2*(domainSize) : 3*(domainSize)]
 
 	return h1, h2, h3
 
