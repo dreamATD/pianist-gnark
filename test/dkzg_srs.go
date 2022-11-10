@@ -25,7 +25,9 @@ import (
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/kzg"
 	"github.com/consensys/gnark/frontend"
+	"github.com/sunblaze-ucb/simpleMPI/mpi"
 
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	dkzg_bn254 "github.com/consensys/gnark-crypto/ecc/bn254/fr/dkzg"
 	kzg_bn254 "github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
 )
@@ -37,13 +39,13 @@ type srsPair struct {
 
 const dsrsCachedSize = (1 << 14) + 3
 
-func NewKZGSRSPair(ccs frontend.CompiledConstraintSystem) (dkzg.SRS, kzg.SRS, error) {
+func NewKZGSRSPair(ccs frontend.CompiledConstraintSystem, domainGenY *fr.Element) (dkzg.SRS, kzg.SRS, error) {
 	nbConstraints := ccs.GetNbConstraints()
 	_, _, public := ccs.GetNbVariables()
 	sizeSystem := nbConstraints + public
 	kzgSize := ecc.NextPowerOfTwo(uint64(sizeSystem)) + 3
 
-	return newKZGSRSPair(ccs.CurveID(), kzgSize)
+	return newKZGSRSPair(ccs.CurveID(), kzgSize, domainGenY)
 }
 
 var dsrsCache map[ecc.ID]srsPair
@@ -52,7 +54,7 @@ var dlock sync.Mutex
 func init() {
 	dsrsCache = make(map[ecc.ID]srsPair)
 }
-func getCachedDSRS(ccs frontend.CompiledConstraintSystem) (dkzg.SRS, kzg.SRS, error) {
+func getCachedDSRS(ccs frontend.CompiledConstraintSystem, domainGenY *fr.Element) (dkzg.SRS, kzg.SRS, error) {
 	dlock.Lock()
 	defer dlock.Unlock()
 
@@ -60,7 +62,7 @@ func getCachedDSRS(ccs frontend.CompiledConstraintSystem) (dkzg.SRS, kzg.SRS, er
 		return pair.dsrs, pair.srs, nil
 	}
 
-	dsrs, srs, err := newKZGSRSPair(ccs.CurveID(), dsrsCachedSize)
+	dsrs, srs, err := newKZGSRSPair(ccs.CurveID(), dsrsCachedSize, domainGenY)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -68,7 +70,7 @@ func getCachedDSRS(ccs frontend.CompiledConstraintSystem) (dkzg.SRS, kzg.SRS, er
 	return dsrs, srs, nil
 }
 
-func newKZGSRSPair(curve ecc.ID, kzgSize uint64) (dkzg.SRS, kzg.SRS, error) {
+func newKZGSRSPair(curve ecc.ID, kzgSize uint64, domainGenY *fr.Element) (dkzg.SRS, kzg.SRS, error) {
 	alpha0, err := rand.Int(rand.Reader, curve.ScalarField())
 	if err != nil {
 		return nil, nil, err
@@ -80,11 +82,11 @@ func newKZGSRSPair(curve ecc.ID, kzgSize uint64) (dkzg.SRS, kzg.SRS, error) {
 
 	switch curve {
 	case ecc.BN254:
-		dsrs, err := dkzg_bn254.NewSRS(kzgSize, []*big.Int{alpha0, alpha1})
+		dsrs, err := dkzg_bn254.NewSRS(kzgSize, []*big.Int{alpha0, alpha1}, domainGenY)
 		if err != nil {
 			return nil, nil, err
 		}
-		srs, err := kzg_bn254.NewSRS(kzgSize, alpha0)
+		srs, err := kzg_bn254.NewSRS(mpi.WorldSize, alpha0)
 		if err != nil {
 			return nil, nil, err
 		}

@@ -17,17 +17,19 @@
 package piano
 
 import (
+	"crypto/rand"
 	"errors"
+	"math/big"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/dkzg"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/fft"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
-	"github.com/consensys/gnark-crypto/ecc/bn254/fr/dkzg"
 	"github.com/consensys/gnark/internal/backend/bn254/cs"
 	"github.com/sunblaze-ucb/simpleMPI/mpi"
 
-	bn254witness "github.com/consensys/gnark/internal/backend/bn254/witness"
 	dkzgg "github.com/consensys/gnark-crypto/dkzg"
+	bn254witness "github.com/consensys/gnark/internal/backend/bn254/witness"
 )
 
 var (
@@ -95,16 +97,15 @@ type VerifyingKey struct {
 }
 
 // Setup sets proving and verifying keys
-func Setup(spr *cs.SparseR1CS, dkzgSRS *dkzg.SRS, kzgSRS *kzg.SRS, publicWitness bn254witness.Witness) (*ProvingKey, *VerifyingKey, error) {
-	if mpi.SelfRank == 0 {
-		globalDomain[0] = fft.NewDomain(mpi.WorldSize)
-		if mpi.WorldSize < 6 {
-			globalDomain[1] = fft.NewDomain(8 * mpi.WorldSize)
-		} else {
-			globalDomain[1] = fft.NewDomain(4 * mpi.WorldSize)
-		}
-		globalSRS = kzgSRS
+func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey, *VerifyingKey, error) {
+	globalDomain[0] = fft.NewDomain(mpi.WorldSize)
+	if mpi.WorldSize < 6 {
+		globalDomain[1] = fft.NewDomain(8 * mpi.WorldSize)
+	} else {
+		globalDomain[1] = fft.NewDomain(4 * mpi.WorldSize)
 	}
+
+	one := fr.One()
 
 	var pk ProvingKey
 	var vk VerifyingKey
@@ -118,6 +119,73 @@ func Setup(spr *cs.SparseR1CS, dkzgSRS *dkzg.SRS, kzgSRS *kzg.SRS, publicWitness
 	sizeSystem := uint64(nbConstraints + spr.NbPublicVariables) // spr.NbPublicVariables is for the placeholder constraints
 	pk.Domain[0] = *fft.NewDomain(sizeSystem)
 	pk.Vk.CosetShift.Set(&pk.Domain[0].FrMultiplicativeGen)
+
+	var t, s *big.Int
+	var err error
+	if mpi.SelfRank == 0 {
+		for {
+			t, err = rand.Int(rand.Reader, spr.CurveID().ScalarField())
+			if err != nil {
+				return nil, nil, err
+			}
+			var ele fr.Element
+			ele.SetBigInt(t)
+			if !ele.Exp(ele, big.NewInt(int64(globalDomain[0].Cardinality))).Equal(&one) {
+				break
+			}
+		}
+		for {
+			s, err = rand.Int(rand.Reader, spr.CurveID().ScalarField())
+			if err != nil {
+				return nil, nil, err
+			}
+			var ele fr.Element
+			ele.SetBigInt(s)
+			if !ele.Exp(ele, big.NewInt(int64(pk.Domain[0].Cardinality))).Equal(&one) {
+				break
+			}
+		}
+		// send t and s to all other processes
+		tByteLen := (t.BitLen() + 7) / 8
+		sByteLen := (s.BitLen() + 7) / 8
+		for i := uint64(1); i < mpi.WorldSize; i++ {
+			if err := mpi.SendBytes([]byte{byte(tByteLen)}, i); err != nil {
+				return nil, nil, err
+			}
+			if err := mpi.SendBytes(t.Bytes(), i); err != nil {
+				return nil, nil, err
+			}
+			if err := mpi.SendBytes([]byte{byte(sByteLen)}, i); err != nil {
+				return nil, nil, err
+			}
+			if err := mpi.SendBytes(s.Bytes(), i); err != nil {
+				return nil, nil, err
+			}
+		}
+		globalSRS, err = kzg.NewSRS(globalDomain[0].Cardinality, t)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		tByteLen, err :=  mpi.ReceiveBytes(1, 0)
+		if err != nil {
+			return nil, nil, err
+		}
+		tbytes, err := mpi.ReceiveBytes(uint64(tByteLen[0]), 0)
+		if err != nil {
+			return nil, nil, err
+		}
+		t = new(big.Int).SetBytes(tbytes)
+		sByteLen, err :=  mpi.ReceiveBytes(1, 0)
+		if err != nil {
+			return nil, nil, err
+		}
+		sbytes, err := mpi.ReceiveBytes(uint64(sByteLen[0]), 0)
+		if err != nil {
+			return nil, nil, err
+		}
+		s = new(big.Int).SetBytes(sbytes)
+	}
 
 	// h, the quotient polynomial is of degree 3(n+1)+2, so it's in a 3(n+2) dim vector space,
 	// the domain is the next power of 2 superior to 3(n+2). 4*domainNum is enough in all cases
@@ -133,6 +201,10 @@ func Setup(spr *cs.SparseR1CS, dkzgSRS *dkzg.SRS, kzgSRS *kzg.SRS, publicWitness
 	vk.Generator.Set(&pk.Domain[0].Generator)
 	vk.NbPublicVariables = uint64(spr.NbPublicVariables)
 
+	dkzgSRS, err := dkzg.NewSRS(vk.Size + 3, []*big.Int{t, s}, &globalDomain[0].Generator)
+	if err != nil {
+		return nil, nil, err
+	}
 	if err := pk.InitKZG(dkzgSRS); err != nil {
 		return nil, nil, err
 	}
@@ -189,7 +261,6 @@ func Setup(spr *cs.SparseR1CS, dkzgSRS *dkzg.SRS, kzgSRS *kzg.SRS, publicWitness
 	ccomputePermutationPolynomials(&pk)
 
 	// Commit to the polynomials to set up the verifying key
-	var err error
 	if vk.Ql, err = dkzg.Commit(pk.Ql, vk.KZGSRS); err != nil {
 		return nil, nil, err
 	}

@@ -22,7 +22,6 @@ import (
 	"math/big"
 	"math/bits"
 	"runtime"
-	"runtime/debug"
 	"sync"
 	"time"
 
@@ -111,11 +110,6 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 
 	// query L, R, O in Lagrange basis, not blinded
 	lSmallX, rSmallX, oSmallX := evaluateLROSmallDomainX(spr, pk, solution)
-	
-	// print lSmallX, rSmallX, oSmallX
-	printVector("lSmallX", lSmallX)
-	printVector("rSmallX", rSmallX)
-	printVector("oSmallX", oSmallX)
 
 	// save lL, lR, lO, and make a copy of them in 
 	// canonical basis note that we allocate more capacity to reuse for blinded
@@ -322,43 +316,50 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		}
 	})
 
+	dkzgOpeningPolys := [][]fr.Element{
+		foldedHx,
+		blindedLCanonicalX,
+		blindedRCanonicalX,
+		blindedOCanonicalX,
+		pk.Ql,
+		pk.Qr,
+		pk.Qm,
+		pk.Qo,
+		pk.CQk,
+		pk.S1Canonical,
+		pk.S2Canonical,
+		pk.S3Canonical,
+		blindedZCanonicalX,
+	}
+	dkzgDigests := []dkzg.Digest{
+		foldedHxDigest,
+		proof.LRO[0],
+		proof.LRO[1],
+		proof.LRO[2],
+		pk.Vk.Ql,
+		pk.Vk.Qr,
+		pk.Vk.Qm,
+		pk.Vk.Qo,
+		pk.Vk.Qk,
+		pk.Vk.S[0],
+		pk.Vk.S[1],
+		pk.Vk.S[2],
+		proof.Z,
+	}
+
 	// Batch open the first list of polynomials
 	var evalsXOnAlpha [][]fr.Element
 	proof.PartialBatchedProof, evalsXOnAlpha, err = dkzg.BatchOpenSinglePoint(
-		[][]fr.Element{
-			foldedHx,
-			blindedLCanonicalX,
-			blindedRCanonicalX,
-			blindedOCanonicalX,
-			pk.Ql,
-			pk.Qr,
-			pk.Qm,
-			pk.Qo,
-			pk.CQk,
-			pk.S1Canonical,
-			pk.S2Canonical,
-			pk.S3Canonical,
-			blindedZCanonicalX,
-		},
-		[]dkzg.Digest{
-			foldedHxDigest,
-			proof.LRO[0],
-			proof.LRO[1],
-			proof.LRO[2],
-			pk.Vk.Ql,
-			pk.Vk.Qr,
-			pk.Vk.Qm,
-			pk.Vk.Qo,
-			pk.Vk.Qk,
-			pk.Vk.S[0],
-			pk.Vk.S[1],
-			pk.Vk.S[2],
-			proof.Z,
-		},
+		dkzgOpeningPolys,
+		dkzgDigests,
 		alpha,
 		hFunc,
 		pk.Vk.KZGSRS,
 	)
+
+	if err != nil {
+		return nil, err
+	}
 
 	if mpi.SelfRank != 0 {
 		log.Debug().Dur("took", time.Since(start)).Msg("prover done")
@@ -407,7 +408,9 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		close(chGateConstraint)
 	}()
 
-	permConstraintSetSmallY := append(evalsXOnAlpha[9:], zShiftedAlpha)
+	var permConstraintSetSmallY [][]fr.Element
+	permConstraintSetSmallY = append(permConstraintSetSmallY, evalsXOnAlpha[9:]...)
+	permConstraintSetSmallY = append(permConstraintSetSmallY, zShiftedAlpha)
 
 	// evaluate polynomials used in the permutation constraint on the coset of
 	// the big domain in terms of Y
@@ -451,9 +454,6 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	<-chPermConstraint
 	<-chGateConstraint
 
-	for i := range gateConstraintBigYBitReversed {
-		fmt.Println("gateConstraintBigYBitReversed", i, gateConstraintBigYBitReversed[i].String())
-	}
 	hyCanonical1, hyCanonical2, hyCanonical3 := computeQuotientCanonicalY(pk,
 		gateConstraintBigYBitReversed,
 		permConstraintBigYBitReverse,
@@ -566,26 +566,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		hFunc,
 		globalSRS,
 	)
-	for i := 0; i < len(openingPolysCanonicalY); i++ {
-		digest, _ := kzg.Commit(openingPolysCanonicalY[i], globalSRS)
-		proofString, err := kzg.Open(openingPolysCanonicalY[i], beta, globalSRS)
-		if err != nil {
-			fmt.Println("error opening poly", i, err)
-			return nil, err
-		}
-		err = kzg.Verify(&digest, &proofString, beta, globalSRS)
-		if err != nil {
-			fmt.Println("error verifying poly233", i, err)
-		}
-		
-	}
 	if err != nil {
-		return nil, err
-	}
-
-	err = kzg.BatchVerifySinglePoint(digestsY, &proof.BatchedProof, beta, hFunc, globalSRS)
-	if err != nil {
-		fmt.Println("batch verify failed")
 		return nil, err
 	}
 	return proof, nil
@@ -1204,11 +1185,6 @@ func computeQuotientCanonicalY(pk *ProvingKey, gateConstraintBigYBitReversed, pe
 	h1 := h[:globalDomain[0].Cardinality]
 	h2 := h[globalDomain[0].Cardinality : 2*globalDomain[0].Cardinality]
 	h3 := h[2*globalDomain[0].Cardinality : 3*globalDomain[0].Cardinality]
-	for i := 0; i < int(globalDomain[0].Cardinality); i++ {
-		fmt.Println("h1", h1[i].String())
-		fmt.Println("h2", h2[i].String())
-		fmt.Println("h3", h3[i].String())
-	}
 	return h1, h2, h3
 }
 
@@ -1359,7 +1335,6 @@ func checkConstraintX(pk *ProvingKey, evalsXOnAlpha [][]fr.Element, zShiftedAlph
 
 	// if result != 0 return error
 	if !result.IsZero() {
-		fmt.Println(debug.Stack())
 		return fmt.Errorf("constraints are not satisfied: got %s, want 0", result.String())
 	}
 	return nil
@@ -1443,7 +1418,6 @@ func checkConstraintY(pk *ProvingKey, evalsXOnBeta []fr.Element, hxCanonicalX, f
 	vanishingY.Sub(&vanishingY, &one)
 
 	hy := eval(foldedHy, beta)
-	fmt.Println("hy", hy.String())
 
 	var vHy fr.Element
 	vHy.Mul(&hy, &vanishingY)
@@ -1451,7 +1425,6 @@ func checkConstraintY(pk *ProvingKey, evalsXOnBeta []fr.Element, hxCanonicalX, f
 
 	// if result != 0 return error
 	if !result.IsZero() {
-		fmt.Println(string(debug.Stack()))
 		return fmt.Errorf("constraints are not satisfied: got %s, want 0", result.String())
 	}
 	return nil

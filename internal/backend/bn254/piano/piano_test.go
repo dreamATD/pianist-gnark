@@ -18,6 +18,7 @@ package piano_test
 
 import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
+	"github.com/sunblaze-ucb/simpleMPI/mpi"
 
 	curve "github.com/consensys/gnark-crypto/ecc/bn254"
 
@@ -28,10 +29,12 @@ import (
 	// bn254piano "github.com/consensys/gnark/internal/backend/bn254/piano"
 
 	// "bytes"
-	"github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
-	"github.com/consensys/gnark-crypto/ecc/bn254/fr/dkzg"
 	"math/big"
 	"reflect"
+
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/dkzg"
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
+
 	// "testing"
 
 	"github.com/consensys/gnark-crypto/ecc"
@@ -80,12 +83,12 @@ func referenceCircuit() (frontend.CompiledConstraintSystem, frontend.Circuit, *d
 	}
 
 	good.Y = (expectedY)
-	dsrs, err := dkzg.NewSRS(ecc.NextPowerOfTwo(nbConstraints)+3, []*big.Int{new(big.Int).SetUint64(42), new(big.Int).SetUint64(42)})
+	dsrs, err := dkzg.NewSRS(ecc.NextPowerOfTwo(nbConstraints)+3, []*big.Int{new(big.Int).SetUint64(42), new(big.Int).SetUint64(42)}, nil)
 	if err != nil {
 		panic(err)
 	}
 
-	srs, err := kzg.NewSRS(ecc.NextPowerOfTwo(nbConstraints), new(big.Int).SetUint64(42))
+	srs, err := kzg.NewSRS(ecc.NextPowerOfTwo(mpi.WorldSize), new(big.Int).SetUint64(42))
 	if err != nil {
 		panic(err)
 	}

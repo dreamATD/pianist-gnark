@@ -22,8 +22,6 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/consensys/gnark/backend/piano"
 	"github.com/consensys/gnark/frontend/cs/scs"
-	"github.com/consensys/gnark/internal/backend/bn254/cs"
-	"github.com/consensys/gnark/test"
 	"github.com/sunblaze-ucb/simpleMPI/mpi"
 
 	"github.com/consensys/gnark/frontend"
@@ -59,17 +57,6 @@ func main() {
 		fmt.Println("circuit compilation error")
 	}
 
-	// create the necessary data for KZG.
-	// This is a toy example, normally the trusted setup to build ZKG
-	// has been ran before.
-	// The size of the data in KZG should be the closest power of 2 bounding //
-	// above max(nbConstraints, nbVariables).
-	_r1cs := ccs.(*cs.SparseR1CS)
-	dsrs, srs, err := test.NewKZGSRSPair(_r1cs)
-	if err != nil {
-		panic(err)
-	}
-
 	// Correct data: the proof passes
 	{
 		// Witnesses instantiation. Witness is known only by the prover,
@@ -91,7 +78,7 @@ func main() {
 		// public data consists the polynomials describing the constants involved
 		// in the constraints, the polynomial describing the permutation ("grand
 		// product argument"), and the FFT domains.
-		pk, vk, err := piano.Setup(ccs, dsrs, srs, witnessPublic)
+		pk, vk, err := piano.Setup(ccs, witnessPublic)
 		//_, err := piano.Setup(r1cs, kate, &publicWitness)
 		if err != nil {
 			log.Fatal(err)
