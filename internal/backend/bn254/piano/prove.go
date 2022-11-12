@@ -1141,32 +1141,36 @@ func computeQuotientCanonicalY(pk *ProvingKey, gateConstraintBigYBitReversed, pe
 	var one fr.Element
 	one.SetOne()
 
-	var lagrangeAlpha, den, frNbElmt fr.Element
-	nbElmt := int64(globalDomain[0].Cardinality)
+	// L1(alpha)
+	var lagrangeAlpha, den fr.Element
+	nbElmt := int64(pk.Domain[0].Cardinality)
 	lagrangeAlpha.Set(&alpha).
 		Exp(lagrangeAlpha, big.NewInt(nbElmt)).
 		Sub(&lagrangeAlpha, &one)
-	frNbElmt.SetUint64(uint64(nbElmt))
 	den.Sub(&alpha, &one).
 		Inverse(&den)
 	lagrangeAlpha.Mul(&lagrangeAlpha, &den).
-							Mul(&lagrangeAlpha, &lambda).
-							Mul(&lagrangeAlpha, &lambda).
-							Mul(&lagrangeAlpha, &globalDomain[0].CardinalityInv)
+		Mul(&lagrangeAlpha, &pk.Domain[0].CardinalityInv)
+
+	var vanishingX fr.Element
+	vanishingX.Exp(alpha, big.NewInt(int64(pk.Domain[0].Cardinality)))
+	vanishingX.Sub(&vanishingX, &one)
 
 	ratio := globalDomain[1].Cardinality / globalDomain[0].Cardinality
 
 	utils.Parallelize(int(globalDomain[1].Cardinality), func(start, end int) {
-		var t fr.Element
+		var permFirstConstraintBigYBitReversed, vHxBigYBitReversed fr.Element
 		for i := uint64(start); i < uint64(end); i++ {
 
 			_i := bits.Reverse64(i) >> nn
 
-			t.Sub(&ZBigYBitReversed[_i], &one).Mul(&t, &lagrangeAlpha)
-			h[_i].Mul(&t, &lambda).
+			permFirstConstraintBigYBitReversed.Sub(&ZBigYBitReversed[_i], &one).Mul(&permFirstConstraintBigYBitReversed, &lagrangeAlpha)
+			vHxBigYBitReversed.Mul(&hxBigYBitReversed[_i], &vanishingX)
+			h[_i].Mul(&permFirstConstraintBigYBitReversed, &lambda).
 				Add(&h[_i], &permConstraintBigYBitReversed[_i]).
 				Mul(&h[_i], &lambda).
 				Add(&h[_i], &gateConstraintBigYBitReversed[_i]).
+				Sub(&h[_i], &vHxBigYBitReversed).
 				Mul(&h[_i], &evaluationXmMinusOneInverse[i%ratio])
 		}
 	})
@@ -1270,21 +1274,6 @@ func checkConstraintX(pk *ProvingKey, evalsXOnAlpha [][]fr.Element, zShiftedAlph
 		s3 := evalsXOnAlpha[11][k]
 		z := evalsXOnAlpha[12][k]
 		zmu := zShiftedAlpha[k]
-		// print all elements
-		fmt.Println("hx", hx)
-		fmt.Println("l", l)
-		fmt.Println("r", r)
-		fmt.Println("o", o)
-		fmt.Println("ql", ql)
-		fmt.Println("qr", qr)
-		fmt.Println("qm", qm)
-		fmt.Println("qo", qo)
-		fmt.Println("qk", qk)
-		fmt.Println("s1", s1)
-		fmt.Println("s2", s2)
-		fmt.Println("s3", s3)
-		fmt.Println("z", z)
-		fmt.Println("zmu", zmu)
 
 		// first part: individual constraints
 		var firstPart fr.Element
@@ -1335,7 +1324,6 @@ func checkConstraintX(pk *ProvingKey, evalsXOnAlpha [][]fr.Element, zShiftedAlph
 		var vanishingX fr.Element
 		vanishingX.Exp(alpha, big.NewInt(int64(pk.Domain[0].Cardinality)))
 		vanishingX.Sub(&vanishingX, &one)
-		fmt.Println("vanishingX", vanishingX)
 
 		var vH fr.Element
 		vH.Mul(&hx, &vanishingX)

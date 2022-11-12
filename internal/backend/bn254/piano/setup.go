@@ -236,12 +236,6 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 		pk.CQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
 		pk.LQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
 	}
-	// print pk.Ql, pk.Qr, pk.Qm, pk.Qo, pk.LQk
-	printVector("pk.Ql", pk.Ql)
-	printVector("pk.Qr", pk.Qr)
-	printVector("pk.Qm", pk.Qm)
-	printVector("pk.Qo", pk.Qo)
-	printVector("pk.LQk", pk.LQk)
 
 	pk.Domain[0].FFTInverse(pk.Ql, fft.DIF)
 	pk.Domain[0].FFTInverse(pk.Qr, fft.DIF)
