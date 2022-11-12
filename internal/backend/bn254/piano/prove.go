@@ -1254,21 +1254,38 @@ func computeLinearizedIdentities(pk *ProvingKey, l, r, o, ql, qr, qm, qo, qk, s1
 
 // checkConstraintX checks that the constraint is satisfied
 func checkConstraintX(pk *ProvingKey, evalsXOnAlpha [][]fr.Element, zShiftedAlpha []fr.Element, gamma, eta, lambda, alpha fr.Element) error {
+	for k := 0; k < int(mpi.WorldSize); k++ {
 		// unpack vector evalsXOnAlpha on hx, l, r, o, ql, qr, qm, qo, qk, s1, s2, s3, z
-	hx := evalsXOnAlpha[0][mpi.SelfRank]
-	l := evalsXOnAlpha[1][mpi.SelfRank]
-	r := evalsXOnAlpha[2][mpi.SelfRank]
-	o := evalsXOnAlpha[3][mpi.SelfRank]
-	ql := evalsXOnAlpha[4][mpi.SelfRank]
-	qr := evalsXOnAlpha[5][mpi.SelfRank]
-	qm := evalsXOnAlpha[6][mpi.SelfRank]
-	qo := evalsXOnAlpha[7][mpi.SelfRank]
-	qk := evalsXOnAlpha[8][mpi.SelfRank]
-	s1 := evalsXOnAlpha[9][mpi.SelfRank]
-	s2 := evalsXOnAlpha[10][mpi.SelfRank]
-	s3 := evalsXOnAlpha[11][mpi.SelfRank]
-	z := evalsXOnAlpha[12][mpi.SelfRank]
-	zmu := zShiftedAlpha[mpi.SelfRank]
+		hx := evalsXOnAlpha[0][k]
+		l := evalsXOnAlpha[1][k]
+		r := evalsXOnAlpha[2][k]
+		o := evalsXOnAlpha[3][k]
+		ql := evalsXOnAlpha[4][k]
+		qr := evalsXOnAlpha[5][k]
+		qm := evalsXOnAlpha[6][k]
+		qo := evalsXOnAlpha[7][k]
+		qk := evalsXOnAlpha[8][k]
+		s1 := evalsXOnAlpha[9][k]
+		s2 := evalsXOnAlpha[10][k]
+		s3 := evalsXOnAlpha[11][k]
+		z := evalsXOnAlpha[12][k]
+		zmu := zShiftedAlpha[k]
+		// print all elements
+		fmt.Println("hx", hx)
+		fmt.Println("l", l)
+		fmt.Println("r", r)
+		fmt.Println("o", o)
+		fmt.Println("ql", ql)
+		fmt.Println("qr", qr)
+		fmt.Println("qm", qm)
+		fmt.Println("qo", qo)
+		fmt.Println("qk", qk)
+		fmt.Println("s1", s1)
+		fmt.Println("s2", s2)
+		fmt.Println("s3", s3)
+		fmt.Println("z", z)
+		fmt.Println("zmu", zmu)
+
 		// first part: individual constraints
 		var firstPart fr.Element
 		ql.Mul(&ql, &l)
@@ -1287,7 +1304,7 @@ func checkConstraintX(pk *ProvingKey, evalsXOnAlpha [][]fr.Element, zShiftedAlph
 
 		var ualpha, uualpha fr.Element
 		ualpha.Mul(&alpha, &pk.Vk.CosetShift)
-	uualpha.Mul(&alpha, &pk.Vk.CosetShift)
+		uualpha.Mul(&ualpha, &pk.Vk.CosetShift)
 
 		var secondPart, tmp fr.Element
 		secondPart.Mul(&eta, &alpha).Add(&secondPart, &l).Add(&secondPart, &gamma)
@@ -1297,15 +1314,14 @@ func checkConstraintX(pk *ProvingKey, evalsXOnAlpha [][]fr.Element, zShiftedAlph
 		secondPart.Mul(&secondPart, &tmp).Mul(&secondPart, &z)
 		secondPart.Sub(&s1, &secondPart)
 
-	// third part L1(alpha)*(Z(beta, alpha) - 1)
-	var thirdPart, one, den, frNbElmt fr.Element
+		// third part L1(alpha)*(Z(Y, alpha) - 1)
+		var thirdPart, one, den fr.Element
 		one.SetOne()
 		z.Sub(&z, &one)
 		nbElmt := int64(pk.Domain[0].Cardinality)
 		thirdPart.Set(&alpha).
 			Exp(thirdPart, big.NewInt(nbElmt)).
 			Sub(&thirdPart, &one)
-	frNbElmt.SetUint64(uint64(nbElmt))
 		den.Sub(&alpha, &one).
 			Inverse(&den)
 		thirdPart.Mul(&thirdPart, &den).
@@ -1319,6 +1335,7 @@ func checkConstraintX(pk *ProvingKey, evalsXOnAlpha [][]fr.Element, zShiftedAlph
 		var vanishingX fr.Element
 		vanishingX.Exp(alpha, big.NewInt(int64(pk.Domain[0].Cardinality)))
 		vanishingX.Sub(&vanishingX, &one)
+		fmt.Println("vanishingX", vanishingX)
 
 		var vH fr.Element
 		vH.Mul(&hx, &vanishingX)
@@ -1326,7 +1343,8 @@ func checkConstraintX(pk *ProvingKey, evalsXOnAlpha [][]fr.Element, zShiftedAlph
 
 		// if result != 0 return error
 		if !result.IsZero() {
-		return fmt.Errorf("constraints are not satisfied: got %s, want 0", result.String())
+			return fmt.Errorf("constraints on X are not satisfied on %d: got %s, want 0", k, result.String())
+		}
 	}
 	return nil
 }
@@ -1365,7 +1383,7 @@ func checkConstraintY(pk *ProvingKey, evalsXOnBeta []fr.Element, hxCanonicalX, f
 
 	var ualpha, uualpha fr.Element
 	ualpha.Mul(&alpha, &pk.Vk.CosetShift)
-	uualpha.Mul(&alpha, &pk.Vk.CosetShift)
+	uualpha.Mul(&ualpha, &pk.Vk.CosetShift)
 
 	var secondPart, tmp fr.Element
 	secondPart.Mul(&eta, &alpha).Add(&secondPart, &l).Add(&secondPart, &gamma)
@@ -1376,14 +1394,13 @@ func checkConstraintY(pk *ProvingKey, evalsXOnBeta []fr.Element, hxCanonicalX, f
 	secondPart.Sub(&s1, &secondPart)
 
 	// third part L1(alpha)*(Z(beta, alpha) - 1)
-	var thirdPart, one, den, frNbElmt fr.Element
+	var thirdPart, one, den fr.Element
 	one.SetOne()
 	z.Sub(&z, &one)
 	nbElmt := int64(pk.Domain[0].Cardinality)
 	thirdPart.Set(&alpha).
 		Exp(thirdPart, big.NewInt(nbElmt)).
 		Sub(&thirdPart, &one)
-	frNbElmt.SetUint64(uint64(nbElmt))
 	den.Sub(&alpha, &one).
 		Inverse(&den)
 	thirdPart.Mul(&thirdPart, &den).
@@ -1416,7 +1433,7 @@ func checkConstraintY(pk *ProvingKey, evalsXOnBeta []fr.Element, hxCanonicalX, f
 
 	// if result != 0 return error
 	if !result.IsZero() {
-		return fmt.Errorf("constraints are not satisfied: got %s, want 0", result.String())
+		return fmt.Errorf("constraints on Y are not satisfied: got %s, want 0", result.String())
 	}
 	return nil
 }
