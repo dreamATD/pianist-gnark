@@ -53,17 +53,17 @@ type Proof struct {
 	// Commitment to Z, the permutation polynomial
 	Z dkzg.Digest
 
-	// Commitments to Hx1, Hx2, Hx3 such that 
+	// Commitments to Hx1, Hx2, Hx3 such that
 	// Hx = Hx1 + (X**N) * Hx2 + (X**(2N)) * Hx3 and
-	// commitments to Hy1, Hy2, Hy3 such that 
+	// commitments to Hy1, Hy2, Hy3 such that
 	// Hy = Hy1 + (Y**M) * Hy2 + (Y**(2M)) * Hy3
 	Hx [3]dkzg.Digest
 	Hy [3]kzg.Digest
 
-	// Batch partially opening proof of 
-	// foldedHx(Y, X) = Hx1(Y, X) + alpha*Hx2(Y, X) + (alpha**2)*Hx3(Y, X), 
+	// Batch partially opening proof of
+	// foldedHx(Y, X) = Hx1(Y, X) + alpha*Hx2(Y, X) + (alpha**2)*Hx3(Y, X),
 	// L(Y, X), R(Y, X), O(Y, X), Ql(Y, X), Qr(Y, X), Qm(Y, X), Qo(Y, X),
-	// Qk(Y, X), S1(Y, X), S2(Y, X), S3(Y, X), 
+	// Qk(Y, X), S1(Y, X), S2(Y, X), S3(Y, X),
 	// blinded Z(Y, X) on X = alpha
 	PartialBatchedProof dkzg.BatchOpeningProof
 
@@ -71,7 +71,7 @@ type Proof struct {
 	PartialZShiftedOpening dkzg.OpeningProof
 
 	// Batch opening proof of L(Y, alpha), R(Y, alpha), O(Y, alpha),
-	// Ql(Y, alpha), Qr(Y, alpha), Qm(Y, alpha), Qo(Y, alpha), Qk(Y, alpha), 
+	// Ql(Y, alpha), Qr(Y, alpha), Qm(Y, alpha), Qo(Y, alpha), Qk(Y, alpha),
 	// S1(Y, alpha), S2(Y, alpha), S3(Y, alpha), Z(Y, alpha), z(Y, mu*alpha),
 	// linearizedIdentities(Y) on Y = beta
 	BatchedProof kzg.BatchOpeningProof
@@ -111,7 +111,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	// query L, R, O in Lagrange basis, not blinded
 	lSmallX, rSmallX, oSmallX := evaluateLROSmallDomainX(spr, pk, solution)
 
-	// save lL, lR, lO, and make a copy of them in 
+	// save lL, lR, lO, and make a copy of them in
 	// canonical basis note that we allocate more capacity to reuse for blinded
 	// polynomials
 	lCanonicalX, rCanonicalX, oCanonicalX, err := computeLROCanonicalX(
@@ -136,7 +136,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		return nil, err
 	}
 	gamma, err := deriveRandomness(&fs, "gamma")
-	
+
 	if err != nil {
 		return nil, err
 	}
@@ -300,7 +300,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	alphaPowerNPlusTwo.ToBigIntRegular(&bAlphaPowerNPlusTwo)
 	foldedHxDigest := proof.Hx[2]
 	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerNPlusTwo) // alpha*Comm(Hx3)
-	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[1]) 						   // alpha*Comm(Hx3) + Comm(Hx2)
+	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[1])                          // alpha*Comm(Hx3) + Comm(Hx2)
 	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerNPlusTwo) // (alpha**(N))*Comm(Hx3) + alpha*Comm(Hx2)
 	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[0])                          // (alpha**(2(N)))*Comm(Hx3) + (alpha**(N))*Comm(Hx2) + Comm(Hx1)
 
@@ -425,14 +425,14 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		// terms of Y
 		permConstraintBigYBitReverse = evaluatePermConstraintBigYBitReversed(
 			pk,
-			gateConstraintSetBigYBitReversed[0],	// L(Y, alpha)
-			gateConstraintSetBigYBitReversed[1],	// R(Y, alpha)
-			gateConstraintSetBigYBitReversed[2],	// O(Y, alpha)
-			permConstraintSetBigYBitReverse[0], 	// S1(Y, alpha)
-			permConstraintSetBigYBitReverse[1], 	// S2(Y, alpha)
-			permConstraintSetBigYBitReverse[2], 	// S3(Y, alpha)
-			permConstraintSetBigYBitReverse[3], 	// Z(Y, alpha)
-			permConstraintSetBigYBitReverse[4], 	// Z(Y, mu*alpha)
+			gateConstraintSetBigYBitReversed[0], // L(Y, alpha)
+			gateConstraintSetBigYBitReversed[1], // R(Y, alpha)
+			gateConstraintSetBigYBitReversed[2], // O(Y, alpha)
+			permConstraintSetBigYBitReverse[0],  // S1(Y, alpha)
+			permConstraintSetBigYBitReverse[1],  // S2(Y, alpha)
+			permConstraintSetBigYBitReverse[2],  // S3(Y, alpha)
+			permConstraintSetBigYBitReverse[3],  // Z(Y, alpha)
+			permConstraintSetBigYBitReverse[4],  // Z(Y, mu*alpha)
 			eta,
 			gamma,
 			alpha,
@@ -483,15 +483,15 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	var betaPowerM fr.Element
 	betaPowerM.Exp(beta, &bSize)
 	betaPowerM.ToBigIntRegular(&bBetaPowerM)
-	foldedHyDigest := proof.Hy[2] // Hy3
-	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM)	// (beta**M)*Hy3
-	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[1]) 					// (beta**M)*Hy3 + Hy2
-	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM)	// (beta**(2M))*Hy3 + (beta**M)*Hy2
-	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[0])					// (beta**(2M))*Hy3 + (beta**M)*Hy2 + Hy1
+	foldedHyDigest := proof.Hy[2]                                      // Hy3
+	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM) // (beta**M)*Hy3
+	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[1])                  // (beta**M)*Hy3 + Hy2
+	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM) // (beta**(2M))*Hy3 + (beta**M)*Hy2
+	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[0])                  // (beta**(2M))*Hy3 + (beta**M)*Hy2 + Hy1
 	foldedHy := hyCanonical3
 	utils.Parallelize(len(foldedHy), func(start, end int) {
 		for i := start; i < end; i++ {
-			foldedHy[i].Mul(&foldedHy[i], &betaPowerM) 		// (beta**M)*Hy3
+			foldedHy[i].Mul(&foldedHy[i], &betaPowerM)      // (beta**M)*Hy3
 			foldedHy[i].Add(&foldedHy[i], &hyCanonical2[i]) // (beta**M)*Hy3 + Hy2
 			foldedHy[i].Mul(&foldedHy[i], &betaPowerM)      // (beta**(2M))*Hy3 + (beta**M)*Hy2
 			foldedHy[i].Add(&foldedHy[i], &hyCanonical1[i]) // (beta**(2M))*Hy3 + (beta**M)*Hy2 + Hy1
@@ -499,7 +499,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	})
 
 	openingPolysCanonicalY = append(openingPolysCanonicalY, foldedHy)
-	
+
 	// evalsOnBeta := evalPolynomialsAtPoint(openingPolysCanonicalY, beta)
 	// DBG check whether constraints are satisfied
 	// if err := checkConstraintY(pk.Vk,
@@ -849,7 +849,7 @@ func evaluateGateConstraintBigYBitReversed(lBigYBR, rBigYBR, oBigYBR, qlBigYBR, 
 func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBigXBR, zBigXBR []fr.Element, eta, gamma fr.Element) []fr.Element {
 	nbElmts := int(pk.Domain[1].Cardinality)
 
-	// computes  
+	// computes
 	res := make([]fr.Element, pk.Domain[1].Cardinality)
 
 	nn := uint64(64 - bits.TrailingZeros64(uint64(nbElmts)))
@@ -981,7 +981,7 @@ func computeCanonicalAndBigFromSmallY(smallEvals [][]fr.Element, smallDomain *ff
 	for i := 0; i < num; i++ {
 		<-chBigEvalsDone[i]
 	}
-	
+
 	return polys, bigEvals
 }
 
@@ -1182,8 +1182,8 @@ func checkConstraintX(pk *ProvingKey, evalsXOnAlpha [][]fr.Element, zShiftedAlph
 		den.Sub(&alpha, &one).
 			Inverse(&den)
 		thirdPart.Mul(&thirdPart, &den).
-							Mul(&thirdPart, &pk.Domain[0].CardinalityInv).
-							Mul(&thirdPart, &z)
+			Mul(&thirdPart, &pk.Domain[0].CardinalityInv).
+			Mul(&thirdPart, &z)
 
 		// Put it all together
 		var result fr.Element

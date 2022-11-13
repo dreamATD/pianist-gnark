@@ -107,7 +107,7 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 			vk.S[0],
 			vk.S[1],
 			vk.S[2],
-			proof.Z,			
+			proof.Z,
 		},
 		&proof.PartialBatchedProof,
 		alpha,
@@ -148,16 +148,16 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 		return err
 	}
 	// foldedHy = Hy1 + (beta**M)*Hy2 + (beta**(2M))*Hy3
-	var bBetaPowerM , bSize big.Int
+	var bBetaPowerM, bSize big.Int
 	bSize.SetUint64(globalDomain[0].Cardinality)
 	var betaPowerM fr.Element
 	betaPowerM.Exp(beta, &bSize)
 	betaPowerM.ToBigIntRegular(&bBetaPowerM)
-	foldedHyDigest := proof.Hy[2] // Hy3
-	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM)	// (beta**M)*Hy3
-	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[1]) 					// (beta**M)*Hy3 + Hy2
-	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM)	// (beta**(2M))*Hy3 + (beta**M)*Hy2
-	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[0])					// (beta**(2M))*Hy3 + (beta**M)*Hy2 + Hy1
+	foldedHyDigest := proof.Hy[2]                                      // Hy3
+	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM) // (beta**M)*Hy3
+	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[1])                  // (beta**M)*Hy3 + Hy2
+	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM) // (beta**(2M))*Hy3 + (beta**M)*Hy2
+	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[0])                  // (beta**(2M))*Hy3 + (beta**M)*Hy2 + Hy1
 
 	if err := kzg.BatchVerifySinglePoint(
 		append(proof.PartialBatchedProof.ClaimedDigests,
@@ -165,7 +165,7 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 			foldedHyDigest,
 		),
 		&proof.BatchedProof,
-		beta,  // not consistent with the prover
+		beta, // not consistent with the prover
 		hFunc,
 		globalSRS,
 	); err != nil {
@@ -307,8 +307,8 @@ func checkConstraintY(vk *VerifyingKey, evalsYOnBeta []fr.Element, gamma, eta, l
 	den.Sub(&alpha, &one).
 		Inverse(&den)
 	thirdPart.Mul(&thirdPart, &den).
-						Mul(&thirdPart, &vk.SizeInv).
-						Mul(&thirdPart, &z)
+		Mul(&thirdPart, &vk.SizeInv).
+		Mul(&thirdPart, &z)
 
 	// Put it all together
 	var result fr.Element
