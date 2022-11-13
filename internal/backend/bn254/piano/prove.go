@@ -598,53 +598,36 @@ func evalPolynomialsAtPoint(polys [][]fr.Element, point fr.Element) []fr.Element
 func commitToLRO(bcl, bcr, bco []fr.Element, proof *Proof, srs *dkzg.SRS) error {
 	n := runtime.NumCPU() / 2
 	var err0, err1, err2 error
-	chCommit0 := make(chan struct{}, 1)
-	chCommit1 := make(chan struct{}, 1)
-	go func() {
-		proof.LRO[0], err0 = dkzg.Commit(bcl, srs, n)
-		close(chCommit0)
-	}()
-	go func() {
-		proof.LRO[1], err1 = dkzg.Commit(bcr, srs, n)
-		close(chCommit1)
-	}()
-	if proof.LRO[2], err2 = dkzg.Commit(bco, srs, n); err2 != nil {
-		return err2
-	}
-	<-chCommit0
-	<-chCommit1
-
+	proof.LRO[0], err0 = dkzg.Commit(bcl, srs, n)
 	if err0 != nil {
 		return err0
 	}
+	proof.LRO[1], err1 = dkzg.Commit(bcr, srs, n)
+	if err1 != nil {
+		return err1
+	}
+	if proof.LRO[2], err2 = dkzg.Commit(bco, srs, n); err2 != nil {
+		return err2
+	}
 
-	return err1
+	return nil
 }
 
 func commitToQuotientX(h1, h2, h3 []fr.Element, proof *Proof, srs *dkzg.SRS) error {
 	n := runtime.NumCPU() / 2
 	var err0, err1, err2 error
-	chCommit0 := make(chan struct{}, 1)
-	chCommit1 := make(chan struct{}, 1)
-	go func() {
-		proof.Hx[0], err0 = dkzg.Commit(h1, srs, n)
-		close(chCommit0)
-	}()
-	go func() {
-		proof.Hx[1], err1 = dkzg.Commit(h2, srs, n)
-		close(chCommit1)
-	}()
-	if proof.Hx[2], err2 = dkzg.Commit(h3, srs, n); err2 != nil {
-		return err2
-	}
-	<-chCommit0
-	<-chCommit1
-
+	proof.Hx[0], err0 = dkzg.Commit(h1, srs, n)
 	if err0 != nil {
 		return err0
 	}
-
-	return err1
+	proof.Hx[1], err1 = dkzg.Commit(h2, srs, n)
+	if err1 != nil {
+		return err1
+	}
+	if proof.Hx[2], err2 = dkzg.Commit(h3, srs, n); err2 != nil {
+		return err2
+	}
+	return nil
 }
 
 func commitToQuotientOnY(h1, h2, h3 []fr.Element, proof *Proof, srs *kzg.SRS) error {

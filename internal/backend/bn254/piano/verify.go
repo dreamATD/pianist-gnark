@@ -86,8 +86,8 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	alphaPowerN.Exp(alpha, &bExpo)
 	zalpha.Sub(&alphaPowerN, &one)
 
-	// compute the folded commitment to H: Comm(h₁) + αᵐ⁺²*Comm(h₂) + α²⁽ᵐ⁺²⁾*Comm(h₃)
-	nPlusTwo := big.NewInt(int64(vk.Size) + 2)
+	// compute the folded commitment to H: Comm(h₁) + αᵐ*Comm(h₂) + α²⁽ᵐ⁾*Comm(h₃)
+	nPlusTwo := big.NewInt(int64(vk.Size))
 	var alphaNPlusTwo fr.Element
 	alphaNPlusTwo.Exp(alpha, nPlusTwo)
 	var alphaNPlusTwoBigInt big.Int
