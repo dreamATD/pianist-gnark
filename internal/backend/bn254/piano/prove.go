@@ -370,17 +370,17 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	}
 
 	// DBG check whether constraints are satisfied
-	if err := checkConstraintX(
-		pk,
-		evalsXOnAlpha,
-		zShiftedAlpha,
-		gamma,
-		eta,
-		lambda,
-		alpha,
-	); err != nil {
-		return nil, err
-	}
+	// if err := checkConstraintX(
+	// 	pk,
+	// 	evalsXOnAlpha,
+	// 	zShiftedAlpha,
+	// 	gamma,
+	// 	eta,
+	// 	lambda,
+	// 	alpha,
+	// ); err != nil {
+	// 	return nil, err
+	// }
 
 	gateConstraintSetSmallY := evalsXOnAlpha[1:9]
 
@@ -499,19 +499,19 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	})
 
 	openingPolysCanonicalY = append(openingPolysCanonicalY, foldedHy)
-	evalsOnBeta := evalPolynomialsAtPoint(openingPolysCanonicalY, beta)
-
+	
+	// evalsOnBeta := evalPolynomialsAtPoint(openingPolysCanonicalY, beta)
 	// DBG check whether constraints are satisfied
-	if err := checkConstraintY(pk.Vk,
-		evalsOnBeta,
-		gamma,
-		eta,
-		lambda,
-		alpha,
-		beta,
-	); err != nil {
-		return nil, err
-	}
+	// if err := checkConstraintY(pk.Vk,
+	// 	evalsOnBeta,
+	// 	gamma,
+	// 	eta,
+	// 	lambda,
+	// 	alpha,
+	// 	beta,
+	// ); err != nil {
+	// 	return nil, err
+	// }
 
 	var digestsY []curve.G1Affine
 	digestsY = append(digestsY, proof.PartialBatchedProof.ClaimedDigests...) // no hx
