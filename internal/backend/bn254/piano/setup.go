@@ -167,7 +167,7 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 			return nil, nil, err
 		}
 	} else {
-		tByteLen, err :=  mpi.ReceiveBytes(1, 0)
+		tByteLen, err := mpi.ReceiveBytes(1, 0)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -176,7 +176,7 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 			return nil, nil, err
 		}
 		t = new(big.Int).SetBytes(tbytes)
-		sByteLen, err :=  mpi.ReceiveBytes(1, 0)
+		sByteLen, err := mpi.ReceiveBytes(1, 0)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -201,7 +201,7 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 	vk.Generator.Set(&pk.Domain[0].Generator)
 	vk.NbPublicVariables = uint64(spr.NbPublicVariables)
 
-	dkzgSRS, err := dkzg.NewSRS(vk.Size + 3, []*big.Int{t, s}, &globalDomain[0].Generator)
+	dkzgSRS, err := dkzg.NewSRS(vk.Size+3, []*big.Int{t, s}, &globalDomain[0].Generator)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -236,12 +236,6 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 		pk.CQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
 		pk.LQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
 	}
-	// print pk.Ql, pk.Qr, pk.Qm, pk.Qo, pk.LQk
-	printVector("pk.Ql", pk.Ql)
-	printVector("pk.Qr", pk.Qr)
-	printVector("pk.Qm", pk.Qm)
-	printVector("pk.Qo", pk.Qo)
-	printVector("pk.LQk", pk.LQk)
 
 	pk.Domain[0].FFTInverse(pk.Ql, fft.DIF)
 	pk.Domain[0].FFTInverse(pk.Qr, fft.DIF)
