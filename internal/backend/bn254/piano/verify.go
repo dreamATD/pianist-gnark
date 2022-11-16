@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math/big"
 	"time"
+	"runtime/debug"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/sunblaze-ucb/simpleMPI/mpi"
@@ -217,6 +218,7 @@ func bindPublicData(fs *fiatshamir.Transcript, challenge string, vk VerifyingKey
 }
 
 func deriveRandomness(fs *fiatshamir.Transcript, challenge string, points ...*curve.G1Affine) (fr.Element, error) {
+	fmt.Println("deriveRandomness", challenge)
 	if mpi.SelfRank == 0 {
 		var buf [curve.SizeOfG1AffineUncompressed]byte
 		var r fr.Element
@@ -224,12 +226,16 @@ func deriveRandomness(fs *fiatshamir.Transcript, challenge string, points ...*cu
 		for _, p := range points {
 			buf = p.RawBytes()
 			if err := fs.Bind(challenge, buf[:]); err != nil {
+				fmt.Println("deriveRandomness", challenge, "err", err)
+				fmt.Println("Stack", string(debug.Stack()))
 				return r, err
 			}
 		}
 
 		b, err := fs.ComputeChallenge(challenge)
 		if err != nil {
+			fmt.Println("deriveRandomness", challenge, "err", err)
+			fmt.Println("Stack", string(debug.Stack()))
 			return r, err
 		}
 		r.SetBytes(b)

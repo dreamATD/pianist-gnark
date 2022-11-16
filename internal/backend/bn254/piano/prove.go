@@ -79,7 +79,7 @@ type Proof struct {
 
 // Prove from the public data
 func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness, opt backend.ProverConfig) (*Proof, error) {
-
+	fmt.Println("Prover started")
 	log := logger.Logger().With().Str("curve", spr.CurveID().String()).Int("nbConstraints", len(spr.Constraints)).Str("backend", "plonk").Logger()
 	start := time.Now()
 	// pick a hash function that will be used to derive the challenges
@@ -107,6 +107,8 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 			}
 		}
 	}
+
+	fmt.Println("Solution computed")
 
 	// query L, R, O in Lagrange basis, not blinded
 	lSmallX, rSmallX, oSmallX := evaluateLROSmallDomainX(spr, pk, solution)
@@ -236,6 +238,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 			chPermConstraint <- err
 			return
 		}
+		fmt.Println("dkzg finished")
 
 		zBigXBitReversed = evaluateBigBitReversed(zCanonicalX, &pk.Domain[1])
 		// compute z(muX)*g1(X)*g2(X)*g3(X) - z(X)*f1(X)*f2(X)*f3(X) on the

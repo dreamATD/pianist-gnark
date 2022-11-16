@@ -22,6 +22,8 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/consensys/gnark/debug"
 )
 
 // Schema represents the structure of a gnark circuit (/ witness)
@@ -310,6 +312,7 @@ func parse(r []Field, input interface{}, target reflect.Type, parentFullName, pa
 	if tValue.Kind() == reflect.Slice || tValue.Kind() == reflect.Array {
 		if tValue.Len() == 0 {
 			if reflect.SliceOf(target) == tValue.Type() {
+				fmt.Printf(debug.Stack())
 				fmt.Printf("ignoring uninitizalized slice: %s %s\n", parentGoName, reflect.SliceOf(target).String())
 			}
 			return r, nil
