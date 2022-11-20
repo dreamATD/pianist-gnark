@@ -100,7 +100,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	// query L, R, O, D in Lagrange basis, not blinded
 	lSmallX, rSmallX, oSmallX, dSmallX := readLRODSmallDomainX(pk)
 
-	// save lL, lR, lO, and make a copy of them in
+	// save lL, lR, lO, lD, and make a copy of them in
 	// canonical basis note that we allocate more capacity to reuse for blinded
 	// polynomials
 	lCanonicalX, rCanonicalX, oCanonicalX, dCanonicalX, err := computeLRODCanonicalX(
@@ -132,7 +132,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	}
 
 	// compute Z, the permutation accumulator polynomial, in canonical basis
-	// lL, lR, lO are NOT blinded
+	// lL, lR, lO, lD are NOT blinded
 	zCanonicalX, err := computeZCanonicalX(
 		lSmallX,
 		rSmallX,
@@ -198,7 +198,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 
 		// compute the evaluation of ql(X)l(X) + qr(X)r(X) + qm(X)l(X)r(X)
 		// + qo(X)o(X) + qd(X)d(X) + qnd(X)d(mu*X) + qk(X) on the big domain coset with the blinded version
-		// of l(X), r(X) o(X) and the completed version of canonical qk(X)
+		// of l(X), r(X), o(X), d(X) and the completed version of canonical qk(X)
 		<-chEvalBL
 		<-chEvalBR
 		<-chEvalBO
@@ -278,8 +278,6 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	if err != nil {
 		return nil, err
 	}
-
-	zShiftedAlpha, dShiftedAlpha := evalsXOnShiftedAlpha[0], evalsXOnShiftedAlpha[1]
 
 	// foldedHDigest = Comm(Hx1) + (alpha**(N))*Comm(Hx2) + (alpha**(2(N)))*Comm(Hx3) + (alpha**(3(N)))*Comm(Hx4)
 	var bAlphaPowerN, bSize big.Int
@@ -369,6 +367,9 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 
 		return proof, nil
 	}
+
+	zShiftedAlpha := evalsXOnShiftedAlpha[0]
+	dShiftedAlpha := evalsXOnShiftedAlpha[1]
 
 	// DBG check whether constraints are satisfied
 	if err := checkConstraintX(
@@ -717,6 +718,9 @@ func blindPoly(cp []fr.Element, rou, bo uint64) ([]fr.Element, error) {
 func readLRODSmallDomainX(pk *ProvingKey) (L []fr.Element, R []fr.Element, O []fr.Element, D []fr.Element) {
 	size := int(pk.Domain[0].Cardinality)
 	L = make([]fr.Element, size)
+	R = make([]fr.Element, size)
+	O = make([]fr.Element, size)
+	D = make([]fr.Element, size)
 	for i := 0; i < size; i++ {
 		L[i].SetInt64(int64(readInt()))
 	}
