@@ -53,24 +53,24 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	}
 
 	// derive eta from Comm(l), Comm(r), Comm(o), Comm(d)
-	gamma, err := deriveRandomness(&fs, "gamma", &proof.LROD[0], &proof.LROD[1], &proof.LROD[2], &proof.LROD[3])
+	gamma, err := deriveRandomness(&fs, "gamma", true, &proof.LROD[0], &proof.LROD[1], &proof.LROD[2], &proof.LROD[3])
 	if err != nil {
 		return err
 	}
 
-	eta, err := deriveRandomness(&fs, "eta")
+	eta, err := deriveRandomness(&fs, "eta", true)
 	if err != nil {
 		return err
 	}
 
 	// derive lambda from Comm(l), Comm(r), Comm(o), Comm(d), Com(Z)
-	lambda, err := deriveRandomness(&fs, "lambda", &proof.Z)
+	lambda, err := deriveRandomness(&fs, "lambda", true, &proof.Z)
 	if err != nil {
 		return err
 	}
 
 	// derive alpha, the point of evaluation
-	alpha, err := deriveRandomness(&fs, "alpha", &proof.Hx[0], &proof.Hx[1], &proof.Hx[2], &proof.Hx[3])
+	alpha, err := deriveRandomness(&fs, "alpha", true, &proof.Hx[0], &proof.Hx[1], &proof.Hx[2], &proof.Hx[3])
 	if err != nil {
 		return err
 	}
@@ -122,22 +122,22 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 		return fmt.Errorf("failed to fold proof on X = alpha: %v", err)
 	}
 
+	// Batch verify
+	var shiftedalpha fr.Element
+	shiftedalpha.Mul(&alpha, &vk.Generator)
 	foldedPartialShiftedProof, foldedPartialShiftedDigest, err := dkzg.FoldProof(
 		[]dkzg.Digest{
 			proof.LROD[3],
 			proof.Z,
 		},
 		&proof.PartialBatchedShiftedProof,
-		alpha,
+		shiftedalpha,
 		hFunc,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to fold proof on X = mu*alpha: %v", err)
 	}
 
-	// Batch verify
-	var shiftedalpha fr.Element
-	shiftedalpha.Mul(&alpha, &vk.Generator)
 	err = dkzg.BatchVerifyMultiPoints(
 		[]dkzg.Digest{
 			foldedPartialDigest,
@@ -158,7 +158,20 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	}
 
 	// derive beta
-	beta, err := deriveRandomness(&fs, "beta", &proof.Hy[0], &proof.Hy[1], &proof.Hy[2], &proof.Hy[3])
+	ts := []*curve.G1Affine{
+		&proof.PartialBatchedShiftedProof.H,
+		&proof.PartialBatchedProof.H,
+	}
+	for _, digest := range proof.PartialBatchedShiftedProof.ClaimedDigests {
+		ts = append(ts, &digest)
+	}
+	for _, digest := range proof.PartialBatchedProof.ClaimedDigests {
+		ts = append(ts, &digest)
+	}
+	for _, digest := range proof.Hy {
+		ts = append(ts, &digest)
+	}
+	beta, err := deriveRandomness(&fs, "beta", true, ts...)
 	if err != nil {
 		return err
 	}
@@ -181,10 +194,8 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[0])                  // (beta**(3M))*Hy4 + (beta**(2M))*Hy3 + (beta**M)*Hy2 + Hy1
 
 	var digestsY []curve.G1Affine
-	digestsY = append(digestsY, proof.PartialBatchedProof.ClaimedDigests[:12]...)
-	digestsY = append(digestsY, proof.PartialBatchedShiftedProof.ClaimedDigests[0]) // Comm(D(Y, mu*alpha))
-	digestsY = append(digestsY, proof.PartialBatchedProof.ClaimedDigests[12:]...)
-	digestsY = append(digestsY, proof.PartialBatchedShiftedProof.ClaimedDigests[1]) // Comm(Z(Y, mu*alpha))
+	digestsY = append(digestsY, proof.PartialBatchedProof.ClaimedDigests...)
+	digestsY = append(digestsY, proof.PartialBatchedShiftedProof.ClaimedDigests...)
 	digestsY = append(digestsY, foldedHyDigest)
 	if err := kzg.BatchVerifySinglePoint(
 		digestsY,
@@ -249,8 +260,7 @@ func bindPublicData(fs *fiatshamir.Transcript, challenge string, vk VerifyingKey
 	return nil
 }
 
-func deriveRandomness(fs *fiatshamir.Transcript, challenge string, points ...*curve.G1Affine) (fr.Element, error) {
-	fmt.Println("deriveRandomness", challenge)
+func deriveRandomness(fs *fiatshamir.Transcript, challenge string, notSend bool, points ...*curve.G1Affine) (fr.Element, error) {
 	if mpi.SelfRank == 0 {
 		var buf [curve.SizeOfG1AffineUncompressed]byte
 		var r fr.Element
@@ -271,6 +281,9 @@ func deriveRandomness(fs *fiatshamir.Transcript, challenge string, points ...*cu
 			return r, err
 		}
 		r.SetBytes(b)
+		if notSend {
+			return r, nil
+		}
 		sendBuf := r.Bytes()
 		for i := 1; i < int(mpi.WorldSize); i++ {
 			mpi.SendBytes(sendBuf[:], uint64(i))
@@ -289,7 +302,7 @@ func deriveRandomness(fs *fiatshamir.Transcript, challenge string, points ...*cu
 
 // checkConstraintY checks that the constraint is satisfied
 func checkConstraintY(vk *VerifyingKey, evalsYOnBeta []fr.Element, gamma, eta, lambda, alpha, beta fr.Element) error {
-	// unpack vector evalsXOnAlpha on l, r, o, ql, qr, qm, qo, qk, s1, s2, s3, z, zmu
+	// unpack vector evalsYOnBeta on l, r, o, ql, qr, qm, qo, qk, s1, s2, s3, s4, z, dmu, zmu
 	hx := evalsYOnBeta[0]
 	l := evalsYOnBeta[1]
 	r := evalsYOnBeta[2]
@@ -302,12 +315,12 @@ func checkConstraintY(vk *VerifyingKey, evalsYOnBeta []fr.Element, gamma, eta, l
 	qd := evalsYOnBeta[9]
 	qnd := evalsYOnBeta[10]
 	qk := evalsYOnBeta[11]
-	dmu := evalsYOnBeta[12]
-	s1 := evalsYOnBeta[13]
-	s2 := evalsYOnBeta[14]
-	s3 := evalsYOnBeta[15]
-	s4 := evalsYOnBeta[16]
-	z := evalsYOnBeta[17]
+	s1 := evalsYOnBeta[12]
+	s2 := evalsYOnBeta[13]
+	s3 := evalsYOnBeta[14]
+	s4 := evalsYOnBeta[15]
+	z := evalsYOnBeta[16]
+	dmu := evalsYOnBeta[17]
 	zmu := evalsYOnBeta[18]
 	hy := evalsYOnBeta[19]
 	// first part: individual constraints
