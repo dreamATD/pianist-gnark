@@ -64,10 +64,10 @@ type Proof struct {
 	// foldedHx(Y, X) = Hx1(Y, X) + alpha*Hx2(Y, X) + (alpha**2)*Hx3(Y, X),
 	// L(Y, X), R(Y, X), O(Y, X), Ql(Y, X), Qr(Y, X), Qm(Y, X), Qo(Y, X),
 	// Qk(Y, X), S1(Y, X), S2(Y, X), S3(Y, X),
-	// blinded Z(Y, X) on X = alpha
+	// Z(Y, X) on X = alpha
 	PartialBatchedProof dkzg.BatchOpeningProof
 
-	// Opening partially proof of blinded Z(Y, X) on X = mu*alpha
+	// Opening partially proof of Z(Y, X) on X = mu*alpha
 	PartialZShiftedOpening dkzg.OpeningProof
 
 	// Batch opening proof of L(Y, alpha), R(Y, alpha), O(Y, alpha),
@@ -80,7 +80,7 @@ type Proof struct {
 // Prove from the public data
 func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness, opt backend.ProverConfig) (*Proof, error) {
 	fmt.Println("Prover started")
-	log := logger.Logger().With().Str("curve", spr.CurveID().String()).Int("nbConstraints", len(spr.Constraints)).Str("backend", "plonk").Logger()
+	log := logger.Logger().With().Str("curve", spr.CurveID().String()).Int("nbConstraints", len(spr.Constraints)).Str("backend", "piano").Logger()
 	start := time.Now()
 	// pick a hash function that will be used to derive the challenges
 	hFunc := sha256.New()
@@ -133,12 +133,11 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 
 	// The first challenge is derived using the public data: the commitments to the permutation,
 	// the coefficients of the circuit, and the public inputs.
-	// derive gamma from the Comm(blinded cL), Comm(blinded cR), Comm(blinded cO)
+	// derive gamma from the Comm(cL), Comm(cR), Comm(cO)
 	if err := bindPublicData(&fs, "gamma", *pk.Vk, fullWitness[:spr.NbPublicVariables]); err != nil {
 		return nil, err
 	}
-	gamma, err := deriveRandomness(&fs, "gamma")
-
+	gamma, err := deriveRandomness(&fs, "gamma", &proof.LRO[0], &proof.LRO[1], &proof.LRO[2])
 	if err != nil {
 		return nil, err
 	}
@@ -151,40 +150,31 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 
 	// compute Z, the permutation accumulator polynomial, in canonical basis
 	// lL, lR, lO are NOT blinded
-	var zCanonicalX []fr.Element
-	chZ := make(chan error, 1)
-	var lambda fr.Element
-	go func() {
-		var err error
-		zCanonicalX, err = computeZCanonicalX(
-			lSmallX,
-			rSmallX,
-			oSmallX,
-			pk, eta, gamma,
-		)
-		if err != nil {
-			chZ <- err
-			close(chZ)
-			return
-		}
+	zCanonicalX, err := computeZCanonicalX(
+		lSmallX,
+		rSmallX,
+		oSmallX,
+		pk, eta, gamma,
+	)
+	if err != nil {
+		return nil, err
+	}
 
-		// commit to the blinded version of z
-		// note that we explicitly double the number of tasks for the multi exp
-		// in dkzg.Commit
-		// this may add additional arithmetic operations, but with smaller tasks
-		// we ensure that this commitment is well parallelized, without having a
-		// "unbalanced task" making the rest of the code wait too long
-		if proof.Z, err = dkzg.Commit(zCanonicalX, pk.Vk.KZGSRS, runtime.NumCPU()*2); err != nil {
-			chZ <- err
-			close(chZ)
-			return
-		}
+	// commit to z
+	// note that we explicitly double the number of tasks for the multi exp
+	// in dkzg.Commit
+	// this may add additional arithmetic operations, but with smaller tasks
+	// we ensure that this commitment is well parallelized, without having a
+	// "unbalanced task" making the rest of the code wait too long
+	if proof.Z, err = dkzg.Commit(zCanonicalX, pk.Vk.KZGSRS, runtime.NumCPU()*2); err != nil {
+		return nil, err
+	}
 
-		// derive lambda from the Comm(L), Comm(R), Comm(O), Com(Z)
-		lambda, err = deriveRandomness(&fs, "lambda", &proof.Z)
-		chZ <- err
-		close(chZ)
-	}()
+	// derive lambda from the Comm(L), Comm(R), Comm(O), Com(Z)
+	lambda, err := deriveRandomness(&fs, "lambda", &proof.Z)
+	if err != nil {
+		return nil, err
+	}
 
 	// evaluate bcL, bcR, bcO and bcZ on the coset of the big domain
 	var (
@@ -217,8 +207,8 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		copy(qkCompletedCanonical, pk.CQk)
 
 		// compute the evaluation of ql(X)l(X) + qr(X)r(X) + qm(X)l(X)r(X)
-		// + qo(X)o(X) + qk(X) on the big domain coset with the blinded version
-		// of l(X), r(X) o(X) and the completed version of canonical qk(X)
+		// + qo(X)o(X) + qk(X) on the big domain coset with l(X), r(X) o(X)
+		// and the completed version of canonical qk(X)
 		<-chEvalBL
 		<-chEvalBR
 		<-chEvalBO
@@ -234,12 +224,6 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 
 	chPermConstraint := make(chan error, 1)
 	go func() {
-		if err := <-chZ; err != nil {
-			chPermConstraint <- err
-			return
-		}
-		fmt.Println("dkzg finished")
-
 		zBigXBitReversed = evaluateBigBitReversed(zCanonicalX, &pk.Domain[1])
 		// compute z(muX)*g1(X)*g2(X)*g3(X) - z(X)*f1(X)*f2(X)*f3(X) on the
 		// coset of the big domain with the evaluations of the blinded
@@ -282,7 +266,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		return nil, err
 	}
 
-	// open blinded Z at mu*alpha
+	// open Z at mu*alpha
 	var alphaShifted fr.Element
 	alphaShifted.Mul(&alpha, &pk.Vk.Generator)
 	var zShiftedAlpha []fr.Element
@@ -296,25 +280,25 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	}
 
 	// foldedHDigest = Comm(Hx1) + (alpha**(N))*Comm(Hx2) + (alpha**(2(N)))*Comm(Hx3)
-	var bAlphaPowerNPlusTwo, bSize big.Int
+	var bAlphaPowerN, bSize big.Int
 	bSize.SetUint64(pk.Domain[0].Cardinality)
-	var alphaPowerNPlusTwo fr.Element
-	alphaPowerNPlusTwo.Exp(alpha, &bSize)
-	alphaPowerNPlusTwo.ToBigIntRegular(&bAlphaPowerNPlusTwo)
+	var alphaPowerN fr.Element
+	alphaPowerN.Exp(alpha, &bSize)
+	alphaPowerN.ToBigIntRegular(&bAlphaPowerN)
 	foldedHxDigest := proof.Hx[2]
-	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerNPlusTwo) // alpha*Comm(Hx3)
-	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[1])                          // alpha*Comm(Hx3) + Comm(Hx2)
-	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerNPlusTwo) // (alpha**(N))*Comm(Hx3) + alpha*Comm(Hx2)
-	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[0])                          // (alpha**(2(N)))*Comm(Hx3) + (alpha**(N))*Comm(Hx2) + Comm(Hx1)
+	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerN) // alpha*Comm(Hx3)
+	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[1])                   // alpha*Comm(Hx3) + Comm(Hx2)
+	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerN) // (alpha**(N))*Comm(Hx3) + alpha*Comm(Hx2)
+	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[0])                   // (alpha**(2(N)))*Comm(Hx3) + (alpha**(N))*Comm(Hx2) + Comm(Hx1)
 
 	// foldedHx = Hx1 + (alpha**(N))*Hx2 + (alpha**(2(N)))*Hx3
 	foldedHx := hx3
 	utils.Parallelize(len(foldedHx), func(start, end int) {
 		for i := start; i < end; i++ {
-			foldedHx[i].Mul(&foldedHx[i], &alphaPowerNPlusTwo) // (alpha**(N))*Hx3
-			foldedHx[i].Add(&foldedHx[i], &hx2[i])             // (alpha**(N))*Hx3 + Hx2
-			foldedHx[i].Mul(&foldedHx[i], &alphaPowerNPlusTwo) // (alpha**(2(N)))*Hx3 + (alpha**(N))*Hx2
-			foldedHx[i].Add(&foldedHx[i], &hx1[i])             // (alpha**(2(N)))*Hx3 + (alpha**(N))*Hx2 + Hx1
+			foldedHx[i].Mul(&foldedHx[i], &alphaPowerN) // (alpha**(N))*Hx3
+			foldedHx[i].Add(&foldedHx[i], &hx2[i])      // (alpha**(N))*Hx3 + Hx2
+			foldedHx[i].Mul(&foldedHx[i], &alphaPowerN) // (alpha**(2(N)))*Hx3 + (alpha**(N))*Hx2
+			foldedHx[i].Add(&foldedHx[i], &hx1[i])      // (alpha**(2(N)))*Hx3 + (alpha**(N))*Hx2 + Hx1
 		}
 	})
 
@@ -667,7 +651,6 @@ func blindPoly(cp []fr.Element, rou, bo uint64) ([]fr.Element, error) {
 	// random polynomial
 	blindingPoly := make([]fr.Element, bo+1)
 	for i := uint64(0); i < bo+1; i++ {
-		continue
 		if _, err := blindingPoly[i].SetRandom(); err != nil {
 			return nil, err
 		}
@@ -729,7 +712,7 @@ func evaluateLROSmallDomainX(spr *cs.SparseR1CS, pk *ProvingKey, solution []fr.E
 //	* l, r, o are the solution in Lagrange basis, evaluated on the small domain
 func computeZCanonicalX(l, r, o []fr.Element, pk *ProvingKey, eta, gamma fr.Element) ([]fr.Element, error) {
 
-	// note that z has more capacity has its memory is reused for blinded z later on
+	// note that z has more capacity has its memory is reused for z later on
 	z := make([]fr.Element, pk.Domain[0].Cardinality)
 	nbElmts := int(pk.Domain[0].Cardinality)
 	gInv := make([]fr.Element, pk.Domain[0].Cardinality)

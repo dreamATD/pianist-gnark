@@ -20,8 +20,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"math/big"
-	"time"
 	"runtime/debug"
+	"time"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/sunblaze-ucb/simpleMPI/mpi"
@@ -52,13 +52,10 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	if err := bindPublicData(&fs, "gamma", *vk, publicWitness); err != nil {
 		return err
 	}
-	bgamma, err := fs.ComputeChallenge("gamma")
+	gamma, err := deriveRandomness(&fs, "gamma", &proof.LRO[0], &proof.LRO[1], &proof.LRO[2])
 	if err != nil {
 		return err
 	}
-	var gamma fr.Element
-	gamma.SetBytes(bgamma)
-
 	// derive eta from Comm(l), Comm(r), Comm(o)
 	eta, err := deriveRandomness(&fs, "eta")
 	if err != nil {
@@ -218,7 +215,6 @@ func bindPublicData(fs *fiatshamir.Transcript, challenge string, vk VerifyingKey
 }
 
 func deriveRandomness(fs *fiatshamir.Transcript, challenge string, points ...*curve.G1Affine) (fr.Element, error) {
-	fmt.Println("deriveRandomness", challenge)
 	if mpi.SelfRank == 0 {
 		var buf [curve.SizeOfG1AffineUncompressed]byte
 		var r fr.Element
