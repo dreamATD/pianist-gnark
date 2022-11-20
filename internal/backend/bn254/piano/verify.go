@@ -20,8 +20,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"math/big"
-	"time"
 	"runtime/debug"
+	"time"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/sunblaze-ucb/simpleMPI/mpi"
@@ -48,31 +48,29 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 
 	// The first challenge is derived using the public data: the commitments to the permutation,
 	// the coefficients of the circuit, and the public inputs.
-	// derive gamma from the Comm(blinded cl), Comm(blinded cr), Comm(blinded co)
 	if err := bindPublicData(&fs, "gamma", *vk, publicWitness); err != nil {
 		return err
 	}
-	bgamma, err := fs.ComputeChallenge("gamma")
+
+	// derive eta from Comm(l), Comm(r), Comm(o), Comm(d)
+	gamma, err := deriveRandomness(&fs, "gamma", &proof.LROD[0], &proof.LROD[1], &proof.LROD[2], &proof.LROD[3])
 	if err != nil {
 		return err
 	}
-	var gamma fr.Element
-	gamma.SetBytes(bgamma)
 
-	// derive eta from Comm(l), Comm(r), Comm(o)
 	eta, err := deriveRandomness(&fs, "eta")
 	if err != nil {
 		return err
 	}
 
-	// derive lambda from Comm(l), Comm(r), Comm(o), Com(Z)
+	// derive lambda from Comm(l), Comm(r), Comm(o), Comm(d), Com(Z)
 	lambda, err := deriveRandomness(&fs, "lambda", &proof.Z)
 	if err != nil {
 		return err
 	}
 
 	// derive alpha, the point of evaluation
-	alpha, err := deriveRandomness(&fs, "alpha", &proof.Hx[0], &proof.Hx[1], &proof.Hx[2])
+	alpha, err := deriveRandomness(&fs, "alpha", &proof.Hx[0], &proof.Hx[1], &proof.Hx[2], &proof.Hx[3])
 	if err != nil {
 		return err
 	}
@@ -85,49 +83,69 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	alphaPowerN.Exp(alpha, &bExpo)
 	zalpha.Sub(&alphaPowerN, &one)
 
-	// compute the folded commitment to H: Comm(h₁) + αᵐ*Comm(h₂) + α²⁽ᵐ⁾*Comm(h₃)
-	var alphaNBigInt big.Int
-	alphaPowerN.ToBigIntRegular(&alphaNBigInt)
-	foldedHxDigest := proof.Hx[2]
-	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &alphaNBigInt)
-	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[1])
-	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &alphaNBigInt)
-	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[0])
+	// compute the folded commitment to H
+	var bAlphaPowerN big.Int
+	alphaPowerN.ToBigIntRegular(&bAlphaPowerN)
+	foldedHxDigest := proof.Hx[3]
+	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerN) // (alpha**N)*Comm(Hx4)
+	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[2])                   // (alpha**N)*Comm(Hx4) + Comm(Hx3)
+	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerN) // (alpha**(2N))*Comm(Hx4) + (alpha**N)*Comm(Hx3)
+	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[1])                   // (alpha**(2N))*Comm(Hx4) + (alpha**N)*Comm(Hx3) + Comm(Hx2)
+	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerN) // (alpha**(3N))*Comm(Hx4) + (alpha**(2N))*Comm(Hx3) + (alpha**N)*Comm(Hx2)
+	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[0])                   // (alpha**(3N))*Comm(Hx4) + (alpha**(2N))*Comm(Hx3) + (alpha**N)*Comm(Hx2) + Comm(Hx1)
 
 	foldedPartialProof, foldedPartialDigest, err := dkzg.FoldProof(
 		[]dkzg.Digest{
 			foldedHxDigest,
-			proof.LRO[0],
-			proof.LRO[1],
-			proof.LRO[2],
+			proof.LROD[0],
+			proof.LROD[1],
+			proof.LROD[2],
+			proof.LROD[3],
 			vk.Ql,
 			vk.Qr,
 			vk.Qm,
 			vk.Qo,
+			vk.Qd,
+			vk.Qnd,
 			vk.Qk,
 			vk.S[0],
 			vk.S[1],
 			vk.S[2],
+			vk.S[3],
 			proof.Z,
 		},
 		&proof.PartialBatchedProof,
 		alpha,
-		hFunc)
-
+		hFunc,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to fold proof on X = alpha: %v", err)
 	}
+
+	foldedPartialShiftedProof, foldedPartialShiftedDigest, err := dkzg.FoldProof(
+		[]dkzg.Digest{
+			proof.LROD[3],
+			proof.Z,
+		},
+		&proof.PartialBatchedShiftedProof,
+		alpha,
+		hFunc,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to fold proof on X = mu*alpha: %v", err)
+	}
+
 	// Batch verify
 	var shiftedalpha fr.Element
 	shiftedalpha.Mul(&alpha, &vk.Generator)
 	err = dkzg.BatchVerifyMultiPoints(
 		[]dkzg.Digest{
 			foldedPartialDigest,
-			proof.Z,
+			foldedPartialShiftedDigest,
 		},
 		[]dkzg.OpeningProof{
 			foldedPartialProof,
-			proof.PartialZShiftedOpening,
+			foldedPartialShiftedProof,
 		},
 		[]fr.Element{
 			alpha,
@@ -136,11 +154,11 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 		vk.KZGSRS,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to batch verify on X = alpha: %v", err)
+		return fmt.Errorf("failed to batch verify on X: %v", err)
 	}
 
 	// derive beta
-	beta, err := deriveRandomness(&fs, "beta", &proof.Hy[0], &proof.Hy[1], &proof.Hy[2])
+	beta, err := deriveRandomness(&fs, "beta", &proof.Hy[0], &proof.Hy[1], &proof.Hy[2], &proof.Hy[3])
 	if err != nil {
 		return err
 	}
@@ -148,25 +166,30 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	if err := checkConstraintY(vk, proof.BatchedProof.ClaimedValues, gamma, eta, lambda, alpha, beta); err != nil {
 		return err
 	}
-	// foldedHy = Hy1 + (beta**M)*Hy2 + (beta**(2M))*Hy3
+	// foldedHy = Hy1 + (beta**M)*Hy2 + (beta**(2M))*Hy3 + (beta**(3M))*Hy4
 	var bBetaPowerM, bSize big.Int
 	bSize.SetUint64(globalDomain[0].Cardinality)
 	var betaPowerM fr.Element
 	betaPowerM.Exp(beta, &bSize)
 	betaPowerM.ToBigIntRegular(&bBetaPowerM)
-	foldedHyDigest := proof.Hy[2]                                      // Hy3
-	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM) // (beta**M)*Hy3
-	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[1])                  // (beta**M)*Hy3 + Hy2
-	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM) // (beta**(2M))*Hy3 + (beta**M)*Hy2
-	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[0])                  // (beta**(2M))*Hy3 + (beta**M)*Hy2 + Hy1
+	foldedHyDigest := proof.Hy[3]                                      // Hy4
+	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM) // (beta**M)*Hy4
+	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[2])                  // (beta**M)*Hy4 + Hy3
+	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM) // (beta**(2M))*Hy4 + (beta**M)*Hy3
+	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[1])                  // (beta**(2M))*Hy4 + (beta**M)*Hy3 + Hy2
+	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM) // (beta**(3M))*Hy4 + (beta**(2M))*Hy3 + (beta**M)*Hy2
+	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[0])                  // (beta**(3M))*Hy4 + (beta**(2M))*Hy3 + (beta**M)*Hy2 + Hy1
 
+	var digestsY []curve.G1Affine
+	digestsY = append(digestsY, proof.PartialBatchedProof.ClaimedDigests[:12]...)
+	digestsY = append(digestsY, proof.PartialBatchedShiftedProof.ClaimedDigests[0]) // Comm(D(Y, mu*alpha))
+	digestsY = append(digestsY, proof.PartialBatchedProof.ClaimedDigests[12:]...)
+	digestsY = append(digestsY, proof.PartialBatchedShiftedProof.ClaimedDigests[1]) // Comm(Z(Y, mu*alpha))
+	digestsY = append(digestsY, foldedHyDigest)
 	if err := kzg.BatchVerifySinglePoint(
-		append(proof.PartialBatchedProof.ClaimedDigests,
-			proof.PartialZShiftedOpening.ClaimedDigest,
-			foldedHyDigest,
-		),
+		digestsY,
 		&proof.BatchedProof,
-		beta, // not consistent with the prover
+		beta,
 		hFunc,
 		globalSRS,
 	); err != nil {
@@ -196,6 +219,9 @@ func bindPublicData(fs *fiatshamir.Transcript, challenge string, vk VerifyingKey
 	if err := fs.Bind(challenge, vk.S[2].Marshal()); err != nil {
 		return err
 	}
+	if err := fs.Bind(challenge, vk.S[3].Marshal()); err != nil {
+		return err
+	}
 
 	// coefficients
 	if err := fs.Bind(challenge, vk.Ql.Marshal()); err != nil {
@@ -208,6 +234,12 @@ func bindPublicData(fs *fiatshamir.Transcript, challenge string, vk VerifyingKey
 		return err
 	}
 	if err := fs.Bind(challenge, vk.Qo.Marshal()); err != nil {
+		return err
+	}
+	if err := fs.Bind(challenge, vk.Qd.Marshal()); err != nil {
+		return err
+	}
+	if err := fs.Bind(challenge, vk.Qnd.Marshal()); err != nil {
 		return err
 	}
 	if err := fs.Bind(challenge, vk.Qk.Marshal()); err != nil {
@@ -262,25 +294,31 @@ func checkConstraintY(vk *VerifyingKey, evalsYOnBeta []fr.Element, gamma, eta, l
 	l := evalsYOnBeta[1]
 	r := evalsYOnBeta[2]
 	o := evalsYOnBeta[3]
-	ql := evalsYOnBeta[4]
-	qr := evalsYOnBeta[5]
-	qm := evalsYOnBeta[6]
-	qo := evalsYOnBeta[7]
-	qk := evalsYOnBeta[8]
-	s1 := evalsYOnBeta[9]
-	s2 := evalsYOnBeta[10]
-	s3 := evalsYOnBeta[11]
-	z := evalsYOnBeta[12]
-	zmu := evalsYOnBeta[13]
-	hy := evalsYOnBeta[14]
+	d := evalsYOnBeta[4]
+	ql := evalsYOnBeta[5]
+	qr := evalsYOnBeta[6]
+	qm := evalsYOnBeta[7]
+	qo := evalsYOnBeta[8]
+	qd := evalsYOnBeta[9]
+	qnd := evalsYOnBeta[10]
+	qk := evalsYOnBeta[11]
+	dmu := evalsYOnBeta[12]
+	s1 := evalsYOnBeta[13]
+	s2 := evalsYOnBeta[14]
+	s3 := evalsYOnBeta[15]
+	s4 := evalsYOnBeta[16]
+	z := evalsYOnBeta[17]
+	zmu := evalsYOnBeta[18]
+	hy := evalsYOnBeta[19]
 	// first part: individual constraints
 	var firstPart fr.Element
 	ql.Mul(&ql, &l)
 	qr.Mul(&qr, &r)
 	qm.Mul(&qm, &l).Mul(&qm, &r)
 	qo.Mul(&qo, &o)
-	firstPart.Add(&ql, &qr).Add(&firstPart, &qm).Add(&firstPart, &qo).Add(&firstPart, &qk)
-	// fmt.Printf("firstPart: %s\n", firstPart.String())
+	qd.Mul(&qd, &d)
+	qnd.Mul(&qnd, &dmu)
+	firstPart.Add(&ql, &qr).Add(&firstPart, &qm).Add(&firstPart, &qo).Add(&firstPart, &qd).Add(&firstPart, &qnd).Add(&firstPart, &qk)
 
 	// second part:
 	// (L(beta, alpha)+eta*S1(beta, alpha)+gamma)*(R(beta, alpha)+eta*S2(beta, alpha)+gamma)*(O(beta, alpha)+eta*S3(alpha)+gamma) * Z(beta,mu*alpha)
@@ -288,17 +326,21 @@ func checkConstraintY(vk *VerifyingKey, evalsYOnBeta []fr.Element, gamma, eta, l
 	s1.Mul(&s1, &eta).Add(&s1, &l).Add(&s1, &gamma)
 	s2.Mul(&s2, &eta).Add(&s2, &r).Add(&s2, &gamma)
 	s3.Mul(&s3, &eta).Add(&s3, &o).Add(&s3, &gamma)
-	s1.Mul(&s1, &s2).Mul(&s1, &s3).Mul(&s1, &zmu)
+	s4.Mul(&s4, &eta).Add(&s4, &d).Add(&s4, &gamma)
+	s1.Mul(&s1, &s2).Mul(&s1, &s3).Mul(&s1, &s4).Mul(&s1, &zmu)
 
-	var ualpha, uualpha fr.Element
+	var ualpha, uualpha, uuualpha fr.Element
 	ualpha.Mul(&alpha, &vk.CosetShift)
 	uualpha.Mul(&ualpha, &vk.CosetShift)
+	uuualpha.Mul(&uualpha, &vk.CosetShift)
 
 	var secondPart, tmp fr.Element
 	secondPart.Mul(&eta, &alpha).Add(&secondPart, &l).Add(&secondPart, &gamma)
 	tmp.Mul(&eta, &ualpha).Add(&tmp, &r).Add(&tmp, &gamma)
 	secondPart.Mul(&secondPart, &tmp)
 	tmp.Mul(&eta, &uualpha).Add(&tmp, &o).Add(&tmp, &gamma)
+	secondPart.Mul(&secondPart, &tmp)
+	tmp.Mul(&eta, &uuualpha).Add(&tmp, &d).Add(&tmp, &gamma)
 	secondPart.Mul(&secondPart, &tmp).Mul(&secondPart, &z)
 	secondPart.Sub(&s1, &secondPart)
 
@@ -323,22 +365,6 @@ func checkConstraintY(vk *VerifyingKey, evalsYOnBeta []fr.Element, gamma, eta, l
 	var vanishingX fr.Element
 	vanishingX.Exp(alpha, big.NewInt(int64(vk.Size)))
 	vanishingX.Sub(&vanishingX, &one)
-
-	// print all elements
-	// fmt.Println("hx", hx)
-	// fmt.Println("l", l)
-	// fmt.Println("r", r)
-	// fmt.Println("o", o)
-	// fmt.Println("ql", ql)
-	// fmt.Println("qr", qr)
-	// fmt.Println("qm", qm)
-	// fmt.Println("qo", qo)
-	// fmt.Println("qk", qk)
-	// fmt.Println("s1", s1)
-	// fmt.Println("s2", s2)
-	// fmt.Println("s3", s3)
-	// fmt.Println("z", z)
-	// fmt.Println("zmu", zmu)
 
 	var vHx fr.Element
 	vHx.Mul(&hx, &vanishingX)

@@ -42,8 +42,9 @@ var (
 // * ql, prepended with as many ones as they are public inputs
 // * qr, qm, qo prepended with as many zeroes as there are public inputs.
 // * qk, prepended with as many zeroes as public inputs, to be completed by the prover
+// * qd, qnd
 // with the list of public inputs.
-// * sigma_1, sigma_2, sigma_3 in both basis
+// * sigma_1, sigma_2, sigma_3, signma_4 in both basis
 // * the copy constraint permutation
 type ProvingKey struct {
 	// Verifying Key is embedded into the proving key (needed by Prove)
@@ -51,6 +52,9 @@ type ProvingKey struct {
 
 	// qr,ql,qm,qo (in canonical basis).
 	Ql, Qr, Qm, Qo []fr.Element
+
+	// qd qnd (in canonical basis).
+	Qd, Qnd []fr.Element
 
 	// LQk (CQk) qk in Lagrange basis (canonical basis), prepended with as many zeroes as public inputs.
 	// Storing LQk in Lagrange basis saves a fft...
@@ -63,8 +67,8 @@ type ProvingKey struct {
 	// Domain[0], Domain[1] fft.Domain
 
 	// Permutation polynomials
-	EvaluationPermutationBigDomainBitReversed []fr.Element
-	S1Canonical, S2Canonical, S3Canonical     []fr.Element
+	EvaluationPermutationBigDomainBitReversed          []fr.Element
+	S1Canonical, S2Canonical, S3Canonical, S4Canonical []fr.Element
 
 	// position -> permuted position (position in [0,3*sizeSystem-1])
 	Permutation []int64
@@ -88,12 +92,12 @@ type VerifyingKey struct {
 	// cosetShift generator of the coset on the small domain
 	CosetShift fr.Element
 
-	// S commitments to S1, S2, S3
-	S [3]kzg.Digest
+	// S commitments to S1, S2, S3, S4
+	S [4]kzg.Digest
 
 	// Commitments to ql, qr, qm, qo prepended with as many zeroes (ones for l) as there are public inputs.
 	// In particular Qk is not complete.
-	Ql, Qr, Qm, Qo, Qk kzg.Digest
+	Ql, Qr, Qm, Qo, Qd, Qnd, Qk kzg.Digest
 }
 
 // Setup sets proving and verifying keys
@@ -120,6 +124,7 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 	pk.Domain[0] = *fft.NewDomain(sizeSystem)
 	pk.Vk.CosetShift.Set(&pk.Domain[0].FrMultiplicativeGen)
 
+	// Transfer randomness t and s to setup dkzg and kzg.
 	var t, s *big.Int
 	var err error
 	if mpi.SelfRank == 0 {
@@ -214,27 +219,21 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 	pk.Qr = make([]fr.Element, pk.Domain[0].Cardinality)
 	pk.Qm = make([]fr.Element, pk.Domain[0].Cardinality)
 	pk.Qo = make([]fr.Element, pk.Domain[0].Cardinality)
+	pk.Qd = make([]fr.Element, pk.Domain[0].Cardinality)
+	pk.Qnd = make([]fr.Element, pk.Domain[0].Cardinality)
 	pk.CQk = make([]fr.Element, pk.Domain[0].Cardinality)
 	pk.LQk = make([]fr.Element, pk.Domain[0].Cardinality)
 
+	// TODO: to read all vectors
 	for i := 0; i < spr.NbPublicVariables; i++ { // placeholders (-PUB_INPUT_i + qk_i = 0) TODO should return error is size is inconsistant
 		pk.Ql[i].SetOne().Neg(&pk.Ql[i])
 		pk.Qr[i].SetZero()
 		pk.Qm[i].SetZero()
 		pk.Qo[i].SetZero()
+		pk.Qd[i].SetZero()
+		pk.Qnd[i].SetZero()
 		pk.CQk[i].Set(&publicWitness[i])
 		pk.LQk[i].Set(&publicWitness[i])
-	}
-	offset := spr.NbPublicVariables
-	for i := 0; i < nbConstraints; i++ { // constraints
-
-		pk.Ql[offset+i].Set(&spr.Coefficients[spr.Constraints[i].L.CoeffID()])
-		pk.Qr[offset+i].Set(&spr.Coefficients[spr.Constraints[i].R.CoeffID()])
-		pk.Qm[offset+i].Set(&spr.Coefficients[spr.Constraints[i].M[0].CoeffID()]).
-			Mul(&pk.Qm[offset+i], &spr.Coefficients[spr.Constraints[i].M[1].CoeffID()])
-		pk.Qo[offset+i].Set(&spr.Coefficients[spr.Constraints[i].O.CoeffID()])
-		pk.CQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
-		pk.LQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
 	}
 
 	pk.Domain[0].FFTInverse(pk.Ql, fft.DIF)
@@ -248,6 +247,7 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 	fft.BitReverse(pk.Qo)
 	fft.BitReverse(pk.CQk)
 
+	// TODO: to read s1, s2, s3, s4, permutation
 	// build permutation. Note: at this stage, the permutation takes in account the placeholders
 	buildPermutation(spr, &pk)
 
@@ -267,6 +267,12 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 	if vk.Qo, err = dkzg.Commit(pk.Qo, vk.KZGSRS); err != nil {
 		return nil, nil, err
 	}
+	if vk.Qd, err = dkzg.Commit(pk.Qd, vk.KZGSRS); err != nil {
+		return nil, nil, err
+	}
+	if vk.Qnd, err = dkzg.Commit(pk.Qnd, vk.KZGSRS); err != nil {
+		return nil, nil, err
+	}
 	if vk.Qk, err = dkzg.Commit(pk.CQk, vk.KZGSRS); err != nil {
 		return nil, nil, err
 	}
@@ -277,6 +283,9 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 		return nil, nil, err
 	}
 	if vk.S[2], err = dkzg.Commit(pk.S3Canonical, vk.KZGSRS); err != nil {
+		return nil, nil, err
+	}
+	if vk.S[3], err = dkzg.Commit(pk.S4Canonical, vk.KZGSRS); err != nil {
 		return nil, nil, err
 	}
 
@@ -297,51 +306,12 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 // i-th entry of l∥r∥o is sent to the s[i]-th entry, so it acts on a tab
 // like this: for i in tab: tab[i] = tab[permutation[i]]
 func buildPermutation(spr *cs.SparseR1CS, pk *ProvingKey) {
-
-	nbVariables := spr.NbInternalVariables + spr.NbPublicVariables + spr.NbSecretVariables
 	sizeSolution := int(pk.Domain[0].Cardinality)
 
 	// init permutation
-	pk.Permutation = make([]int64, 3*sizeSolution)
-	for i := 0; i < len(pk.Permutation); i++ {
-		pk.Permutation[i] = -1
-	}
+	pk.Permutation = make([]int64, 4*sizeSolution)
 
-	// init LRO position -> variable_ID
-	lro := make([]int, 3*sizeSolution) // position -> variable_ID
-	for i := 0; i < spr.NbPublicVariables; i++ {
-		lro[i] = i // IDs of LRO associated to placeholders (only L needs to be taken care of)
-	}
-
-	offset := spr.NbPublicVariables
-	for i := 0; i < len(spr.Constraints); i++ { // IDs of LRO associated to constraints
-		lro[offset+i] = spr.Constraints[i].L.WireID()
-		lro[sizeSolution+offset+i] = spr.Constraints[i].R.WireID()
-		lro[2*sizeSolution+offset+i] = spr.Constraints[i].O.WireID()
-	}
-
-	// init cycle:
-	// map ID -> last position the ID was seen
-	cycle := make([]int64, nbVariables)
-	for i := 0; i < len(cycle); i++ {
-		cycle[i] = -1
-	}
-
-	for i := 0; i < len(lro); i++ {
-		if cycle[lro[i]] != -1 {
-			// if != -1, it means we already encountered this value
-			// so we need to set the corresponding permutation index.
-			pk.Permutation[i] = cycle[lro[i]]
-		}
-		cycle[lro[i]] = int64(i)
-	}
-
-	// complete the Permutation by filling the first IDs encountered
-	for i := 0; i < len(pk.Permutation); i++ {
-		if pk.Permutation[i] == -1 {
-			pk.Permutation[i] = cycle[lro[i]]
-		}
-	}
+	// TODO: read pk.Permutation
 }
 
 // ccomputePermutationPolynomials computes the LDE (Lagrange basis) of the permutations
@@ -364,44 +334,52 @@ func ccomputePermutationPolynomials(pk *ProvingKey) {
 	pk.S1Canonical = make([]fr.Element, nbElmts)
 	pk.S2Canonical = make([]fr.Element, nbElmts)
 	pk.S3Canonical = make([]fr.Element, nbElmts)
+	pk.S4Canonical = make([]fr.Element, nbElmts)
 	for i := 0; i < nbElmts; i++ {
 		pk.S1Canonical[i].Set(&evaluationIDSmallDomain[pk.Permutation[i]])
 		pk.S2Canonical[i].Set(&evaluationIDSmallDomain[pk.Permutation[nbElmts+i]])
 		pk.S3Canonical[i].Set(&evaluationIDSmallDomain[pk.Permutation[2*nbElmts+i]])
+		pk.S4Canonical[i].Set(&evaluationIDSmallDomain[pk.Permutation[3*nbElmts+i]])
 	}
 
 	// Canonical form of S1, S2, S3
 	pk.Domain[0].FFTInverse(pk.S1Canonical, fft.DIF)
 	pk.Domain[0].FFTInverse(pk.S2Canonical, fft.DIF)
 	pk.Domain[0].FFTInverse(pk.S3Canonical, fft.DIF)
+	pk.Domain[0].FFTInverse(pk.S4Canonical, fft.DIF)
 	fft.BitReverse(pk.S1Canonical)
 	fft.BitReverse(pk.S2Canonical)
 	fft.BitReverse(pk.S3Canonical)
+	fft.BitReverse(pk.S4Canonical)
 
 	// evaluation of permutation on the big domain
-	pk.EvaluationPermutationBigDomainBitReversed = make([]fr.Element, 3*pk.Domain[1].Cardinality)
+	pk.EvaluationPermutationBigDomainBitReversed = make([]fr.Element, 4*pk.Domain[1].Cardinality)
 	copy(pk.EvaluationPermutationBigDomainBitReversed, pk.S1Canonical)
 	copy(pk.EvaluationPermutationBigDomainBitReversed[pk.Domain[1].Cardinality:], pk.S2Canonical)
 	copy(pk.EvaluationPermutationBigDomainBitReversed[2*pk.Domain[1].Cardinality:], pk.S3Canonical)
+	copy(pk.EvaluationPermutationBigDomainBitReversed[3*pk.Domain[1].Cardinality:], pk.S4Canonical)
 	pk.Domain[1].FFT(pk.EvaluationPermutationBigDomainBitReversed[:pk.Domain[1].Cardinality], fft.DIF, true)
 	pk.Domain[1].FFT(pk.EvaluationPermutationBigDomainBitReversed[pk.Domain[1].Cardinality:2*pk.Domain[1].Cardinality], fft.DIF, true)
-	pk.Domain[1].FFT(pk.EvaluationPermutationBigDomainBitReversed[2*pk.Domain[1].Cardinality:], fft.DIF, true)
+	pk.Domain[1].FFT(pk.EvaluationPermutationBigDomainBitReversed[2*pk.Domain[1].Cardinality:3*pk.Domain[1].Cardinality], fft.DIF, true)
+	pk.Domain[1].FFT(pk.EvaluationPermutationBigDomainBitReversed[3*pk.Domain[1].Cardinality:], fft.DIF, true)
 
 }
 
 // getIDSmallDomain returns the Lagrange form of ID on the small domain
 func getIDSmallDomain(domain *fft.Domain) []fr.Element {
 
-	res := make([]fr.Element, 3*domain.Cardinality)
+	res := make([]fr.Element, 4*domain.Cardinality)
 
 	res[0].SetOne()
 	res[domain.Cardinality].Set(&domain.FrMultiplicativeGen)
 	res[2*domain.Cardinality].Square(&domain.FrMultiplicativeGen)
+	res[3*domain.Cardinality].Mul(&res[domain.Cardinality], &res[2*domain.Cardinality])
 
 	for i := uint64(1); i < domain.Cardinality; i++ {
 		res[i].Mul(&res[i-1], &domain.Generator)
 		res[domain.Cardinality+i].Mul(&res[domain.Cardinality+i-1], &domain.Generator)
 		res[2*domain.Cardinality+i].Mul(&res[2*domain.Cardinality+i-1], &domain.Generator)
+		res[3*domain.Cardinality+i].Mul(&res[3*domain.Cardinality+i-1], &domain.Generator)
 	}
 
 	return res
