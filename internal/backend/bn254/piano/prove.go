@@ -192,10 +192,6 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	var gateConstraintBigXBitReversed, permConstraintBigXBitReversed []fr.Element
 	chGateConstraint := make(chan struct{}, 1)
 	go func() {
-		// compute Qk in canonical basis, completed with the public inputs
-		qkCompletedCanonical := make([]fr.Element, pk.Domain[0].Cardinality)
-		copy(qkCompletedCanonical, pk.CQk)
-
 		// compute the evaluation of ql(X)l(X) + qr(X)r(X) + qm(X)l(X)r(X)
 		// + qo(X)o(X) + qd(X)d(X) + qnd(X)d(mu*X) + qk(X) on the big domain coset with the blinded version
 		// of l(X), r(X), o(X), d(X) and the completed version of canonical qk(X)
@@ -209,7 +205,6 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 			rBigXBitReversed,
 			oBigXBitReversed,
 			dBigXBitReversed,
-			qkCompletedCanonical,
 		)
 		close(chGateConstraint)
 	}()
@@ -798,7 +793,7 @@ func computeZCanonicalX(l, r, o, d []fr.Element, pk *ProvingKey, eta, gamma fr.E
 // evaluateGateConstraintBigXBitReversed computes the evaluation of
 // ql(X)L(X) + qr(X)r(X) + qm(X)l(X)r(X) + qo(X)o(X) + qk(X)
 // on the big domain coset.
-func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBigXBR, dBigXBR, qkCX []fr.Element) []fr.Element {
+func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBigXBR, dBigXBR []fr.Element) []fr.Element {
 	var qlBigXBR, qrBigXBR, qmBigXBR, qoBigXBR, qdBigXBR, qndBigXBR, qkBigXBR []fr.Element
 	var wg sync.WaitGroup
 	wg.Add(6)
@@ -827,38 +822,41 @@ func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 		qndBigXBR = evaluateBigBitReversed(pk.Qnd, &pk.Domain[1])
 		wg.Done()
 	}()
-	qkBigXBR = evaluateBigBitReversed(qkCX, &pk.Domain[1])
+	qkBigXBR = evaluateBigBitReversed(pk.CQk, &pk.Domain[1])
 	wg.Wait()
 
 	// needed to shift evalD
 	toShift := int(pk.Domain[1].Cardinality / pk.Domain[0].Cardinality)
 	nbElmts := int(pk.Domain[1].Cardinality)
+	nn := uint64(64 - bits.TrailingZeros64(uint64(nbElmts)))
 	utils.Parallelize(len(qkBigXBR), func(start, end int) {
 		var t0, t1 fr.Element
 		for i := start; i < end; i++ {
+			_i := bits.Reverse64(uint64(i)) >> nn
+			_is := bits.Reverse64(uint64((i+toShift)%nbElmts)) >> nn
 			// (qm * r + ql) * l
-			t1.Mul(&qmBigXBR[i], &rBigXBR[i])
-			t1.Add(&t1, &qlBigXBR[i])
-			t1.Mul(&t1, &lBigXBR[i])
+			t1.Mul(&qmBigXBR[_i], &rBigXBR[_i])
+			t1.Add(&t1, &qlBigXBR[_i])
+			t1.Mul(&t1, &lBigXBR[_i])
 
 			// + qr * r
-			t0.Mul(&qrBigXBR[i], &rBigXBR[i])
+			t0.Mul(&qrBigXBR[_i], &rBigXBR[_i])
 			t0.Add(&t0, &t1)
 
 			// + qo * o
-			t1.Mul(&qoBigXBR[i], &oBigXBR[i])
+			t1.Mul(&qoBigXBR[_i], &oBigXBR[_i])
 			t0.Add(&t0, &t1)
 
 			// + qd * d
-			t1.Mul(&qdBigXBR[i], &dBigXBR[i])
+			t1.Mul(&qdBigXBR[_i], &dBigXBR[_i])
 			t0.Add(&t0, &t1)
 
 			// + qnd * d_next
-			t1.Mul(&qndBigXBR[i], &dBigXBR[(i+toShift)%nbElmts])
+			t1.Mul(&qndBigXBR[_i], &dBigXBR[_is])
 			t0.Add(&t0, &t1)
 
 			// + qk
-			qkBigXBR[i].Add(&t0, &qkBigXBR[i])
+			qkBigXBR[_i].Add(&t0, &qkBigXBR[_i])
 		}
 	})
 
