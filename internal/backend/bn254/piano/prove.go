@@ -97,8 +97,8 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		return nil, err
 	}
 
-	// query L, R, O in Lagrange basis, not blinded
-	lSmallX, rSmallX, oSmallX, dSmallX := readLRODSmallDomainX()
+	// query L, R, O, D in Lagrange basis, not blinded
+	lSmallX, rSmallX, oSmallX, dSmallX := readLRODSmallDomainX(pk)
 
 	// save lL, lR, lO, and make a copy of them in
 	// canonical basis note that we allocate more capacity to reuse for blinded
@@ -714,8 +714,22 @@ func blindPoly(cp []fr.Element, rou, bo uint64) ([]fr.Element, error) {
 }
 
 // readLRODSmallDomainX extracts the solution l, r, o, d, and returns it in lagrange form.
-func readLRODSmallDomainX() ([]fr.Element, []fr.Element, []fr.Element, []fr.Element) {
-	return nil, nil, nil, nil
+func readLRODSmallDomainX(pk *ProvingKey) (L []fr.Element, R []fr.Element, O []fr.Element, D []fr.Element) {
+	size := int(pk.Domain[0].Cardinality)
+	L = make([]fr.Element, size)
+	for i := 0; i < size; i++ {
+		L[i].SetInt64(int64(readInt()))
+	}
+	for i := 0; i < size; i++ {
+		R[i].SetInt64(int64(readInt()))
+	}
+	for i := 0; i < size; i++ {
+		O[i].SetInt64(int64(readInt()))
+	}
+	for i := 0; i < size; i++ {
+		D[i].SetInt64(int64(readInt()))
+	}
+	return
 }
 
 // computeZ computes z, in canonical basis, where:

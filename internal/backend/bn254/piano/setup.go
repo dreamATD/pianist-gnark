@@ -19,7 +19,11 @@ package piano
 import (
 	"crypto/rand"
 	"errors"
+	"fmt"
+	"io/ioutil"
 	"math/big"
+	"strconv"
+	"strings"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/dkzg"
@@ -35,6 +39,8 @@ import (
 var (
 	globalDomain [2]*fft.Domain
 	globalSRS    *kzg.SRS
+	inputInts    []int
+	reader       int
 )
 
 // ProvingKey stores the data needed to generate a proof:
@@ -102,6 +108,13 @@ type VerifyingKey struct {
 
 // Setup sets proving and verifying keys
 func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey, *VerifyingKey, error) {
+	var err error
+	inputInts, err = readInts("input.txt")
+	if err != nil {
+		return nil, nil, err
+	}
+	reader = 0
+
 	globalDomain[0] = fft.NewDomain(mpi.WorldSize)
 	if mpi.WorldSize < 6 {
 		globalDomain[1] = fft.NewDomain(8 * mpi.WorldSize)
@@ -117,16 +130,16 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 	// The verifying key shares data with the proving key
 	pk.Vk = &vk
 
-	nbConstraints := len(spr.Constraints)
+	// nbConstraints := len(spr.Constraints)
 
 	// fft domains
-	sizeSystem := uint64(nbConstraints + spr.NbPublicVariables) // spr.NbPublicVariables is for the placeholder constraints
+	// sizeSystem := uint64(nbConstraints + spr.NbPublicVariables) // spr.NbPublicVariables is for the placeholder constraints
+	sizeSystem := uint64(readInt())
 	pk.Domain[0] = *fft.NewDomain(sizeSystem)
 	pk.Vk.CosetShift.Set(&pk.Domain[0].FrMultiplicativeGen)
 
 	// Transfer randomness t and s to setup dkzg and kzg.
 	var t, s *big.Int
-	var err error
 	if mpi.SelfRank == 0 {
 		for {
 			t, err = rand.Int(rand.Reader, spr.CurveID().ScalarField())
@@ -224,34 +237,48 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 	pk.CQk = make([]fr.Element, pk.Domain[0].Cardinality)
 	pk.LQk = make([]fr.Element, pk.Domain[0].Cardinality)
 
-	// TODO: to read all vectors
-	for i := 0; i < spr.NbPublicVariables; i++ { // placeholders (-PUB_INPUT_i + qk_i = 0) TODO should return error is size is inconsistant
-		pk.Ql[i].SetOne().Neg(&pk.Ql[i])
-		pk.Qr[i].SetZero()
-		pk.Qm[i].SetZero()
-		pk.Qo[i].SetZero()
-		pk.Qd[i].SetZero()
-		pk.Qnd[i].SetZero()
-		pk.CQk[i].Set(&publicWitness[i])
-		pk.LQk[i].Set(&publicWitness[i])
+	for i := 0; i < int(sizeSystem); i++ {
+		pk.Ql[i].SetInt64(int64(readInt()))
+	}
+	for i := 0; i < int(sizeSystem); i++ {
+		pk.Qr[i].SetInt64(int64(readInt()))
+	}
+	for i := 0; i < int(sizeSystem); i++ {
+		pk.Qm[i].SetInt64(int64(readInt()))
+	}
+	for i := 0; i < int(sizeSystem); i++ {
+		pk.Qo[i].SetInt64(int64(readInt()))
+	}
+	for i := 0; i < int(sizeSystem); i++ {
+		pk.Qd[i].SetInt64(int64(readInt()))
+	}
+	for i := 0; i < int(sizeSystem); i++ {
+		pk.Qnd[i].SetInt64(int64(readInt()))
+	}
+	for i := 0; i < int(sizeSystem); i++ {
+		pk.LQk[i].SetInt64(int64(readInt()))
+		pk.CQk[i].Set(&pk.LQk[i])
 	}
 
 	pk.Domain[0].FFTInverse(pk.Ql, fft.DIF)
 	pk.Domain[0].FFTInverse(pk.Qr, fft.DIF)
 	pk.Domain[0].FFTInverse(pk.Qm, fft.DIF)
 	pk.Domain[0].FFTInverse(pk.Qo, fft.DIF)
+	pk.Domain[0].FFTInverse(pk.Qd, fft.DIF)
+	pk.Domain[0].FFTInverse(pk.Qnd, fft.DIF)
 	pk.Domain[0].FFTInverse(pk.CQk, fft.DIF)
 	fft.BitReverse(pk.Ql)
 	fft.BitReverse(pk.Qr)
 	fft.BitReverse(pk.Qm)
 	fft.BitReverse(pk.Qo)
+	fft.BitReverse(pk.Qd)
+	fft.BitReverse(pk.Qnd)
 	fft.BitReverse(pk.CQk)
 
-	// TODO: to read s1, s2, s3, s4, permutation
 	// build permutation. Note: at this stage, the permutation takes in account the placeholders
-	buildPermutation(spr, &pk)
+	buildPermutation(&pk)
 
-	// set s1, s2, s3
+	// set s1, s2, s3, s4
 	ccomputePermutationPolynomials(&pk)
 
 	// Commit to the polynomials to set up the verifying key
@@ -305,13 +332,14 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 // The permutation is encoded as a slice s of size 3*size(l), where the
 // i-th entry of l∥r∥o is sent to the s[i]-th entry, so it acts on a tab
 // like this: for i in tab: tab[i] = tab[permutation[i]]
-func buildPermutation(spr *cs.SparseR1CS, pk *ProvingKey) {
+func buildPermutation(pk *ProvingKey) {
 	sizeSolution := int(pk.Domain[0].Cardinality)
 
 	// init permutation
 	pk.Permutation = make([]int64, 4*sizeSolution)
-
-	// TODO: read pk.Permutation
+	for i := range pk.Permutation {
+		pk.Permutation[i] = int64(readInt())
+	}
 }
 
 // ccomputePermutationPolynomials computes the LDE (Lagrange basis) of the permutations
@@ -418,4 +446,41 @@ func (vk *VerifyingKey) NbPublicWitness() int {
 // VerifyingKey returns pk.Vk
 func (pk *ProvingKey) VerifyingKey() interface{} {
 	return pk.Vk
+}
+
+// readInts reads whitespace-separated ints from r. If there's an error, it
+// returns the ints successfully read so far as well as the error value.
+func readInts(filename string) (nums []int, err error) {
+	b, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(b), "")
+	// Assign cap to avoid resize on every append.
+	nums = make([]int, 0, len(lines))
+
+	for _, l := range lines {
+		// Empty line occurs at the end of the file when we use Split.
+		if len(l) == 0 {
+			continue
+		}
+		// Atoi better suits the job when we know exactly what we're dealing
+		// with. Scanf is the more general option.
+		n, err := strconv.Atoi(l)
+		if err != nil {
+			return nil, err
+		}
+		nums = append(nums, n)
+	}
+
+	if len(nums) != 15*nums[0] {
+		return nil, fmt.Errorf("wrong input array length")
+	}
+	return nums, nil
+}
+
+func readInt() int {
+	res := inputInts[reader]
+	reader = reader + 1
+	return res
 }
