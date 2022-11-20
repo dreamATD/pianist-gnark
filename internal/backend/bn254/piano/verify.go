@@ -52,24 +52,24 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	if err := bindPublicData(&fs, "gamma", *vk, publicWitness); err != nil {
 		return err
 	}
-	gamma, err := deriveRandomness(&fs, "gamma", &proof.LRO[0], &proof.LRO[1], &proof.LRO[2])
+	gamma, err := deriveRandomness(&fs, "gamma", true, &proof.LRO[0], &proof.LRO[1], &proof.LRO[2])
 	if err != nil {
 		return err
 	}
 	// derive eta from Comm(l), Comm(r), Comm(o)
-	eta, err := deriveRandomness(&fs, "eta")
+	eta, err := deriveRandomness(&fs, "eta", true)
 	if err != nil {
 		return err
 	}
 
 	// derive lambda from Comm(l), Comm(r), Comm(o), Com(Z)
-	lambda, err := deriveRandomness(&fs, "lambda", &proof.Z)
+	lambda, err := deriveRandomness(&fs, "lambda", true, &proof.Z)
 	if err != nil {
 		return err
 	}
 
 	// derive alpha, the point of evaluation
-	alpha, err := deriveRandomness(&fs, "alpha", &proof.Hx[0], &proof.Hx[1], &proof.Hx[2])
+	alpha, err := deriveRandomness(&fs, "alpha", true, &proof.Hx[0], &proof.Hx[1], &proof.Hx[2])
 	if err != nil {
 		return err
 	}
@@ -137,7 +137,16 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	}
 
 	// derive beta
-	beta, err := deriveRandomness(&fs, "beta", &proof.Hy[0], &proof.Hy[1], &proof.Hy[2])
+	ts := []*curve.G1Affine{
+		&proof.PartialBatchedProof.H,
+	}
+	for _, digest := range proof.PartialBatchedProof.ClaimedDigests {
+		ts = append(ts, &digest)
+	}
+	for _, digest := range proof.Hy {
+		ts = append(ts, &digest)
+	}
+	beta, err := deriveRandomness(&fs, "beta", true, ts...)
 	if err != nil {
 		return err
 	}
@@ -214,7 +223,7 @@ func bindPublicData(fs *fiatshamir.Transcript, challenge string, vk VerifyingKey
 	return nil
 }
 
-func deriveRandomness(fs *fiatshamir.Transcript, challenge string, points ...*curve.G1Affine) (fr.Element, error) {
+func deriveRandomness(fs *fiatshamir.Transcript, challenge string, notSend bool, points ...*curve.G1Affine) (fr.Element, error) {
 	if mpi.SelfRank == 0 {
 		var buf [curve.SizeOfG1AffineUncompressed]byte
 		var r fr.Element
@@ -235,6 +244,9 @@ func deriveRandomness(fs *fiatshamir.Transcript, challenge string, points ...*cu
 			return r, err
 		}
 		r.SetBytes(b)
+		if notSend {
+			return r, nil
+		}
 		sendBuf := r.Bytes()
 		for i := 1; i < int(mpi.WorldSize); i++ {
 			mpi.SendBytes(sendBuf[:], uint64(i))
