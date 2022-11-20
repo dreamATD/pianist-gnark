@@ -494,7 +494,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		ts = append(ts, &digest)
 	}
 	// derive beta
-	beta, err := deriveRandomness(&fs, "beta", false, ts...)
+	beta, err := deriveRandomness(&fs, "beta", true, ts...)
 	if err != nil {
 		return nil, err
 	}
