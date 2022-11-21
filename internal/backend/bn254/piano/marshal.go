@@ -55,34 +55,43 @@ func WriteFrArray(w io.Writer, array []fr.Element) (int64, error) {
 }
 func ReadFrArray(r io.Reader) ([]fr.Element, error) {
 	sizeBuf := make([]byte, 8)
+
 	_, err := r.Read(sizeBuf)
 	if err != nil {
 		return nil, err
 	}
 	size := binary.LittleEndian.Uint64(sizeBuf)
 	fmt.Println("size", size)
-	buf := make([]byte, 32*size)
-	if uint64(len(buf)) != 32*size {
-		return nil, fmt.Errorf("error reading fr array")
-	}
 	bytesRead := 0
-	for bytesRead < len(buf) {
-		n, err := r.Read(buf[bytesRead:])
-		if err != nil {
-			return nil, err
-		}
-		bytesRead += n
-	}
-	if err != nil {
-		return nil, err
-	}
-	if uint64(bytesRead) != uint64(32*size) {
-		return nil, fmt.Errorf("not enough bytes to read")
-	}
+	bytesConsumed := 0
 	array := make([]fr.Element, size)
+	//256MB buffer
+	buf := make([]byte, 256*1024*1024)
+	ptr := 0
 	for i := uint64(0); i < size; i++ {
-		array[i].SetBytes(buf[i*32 : (i+1)*32])
+		if bytesConsumed == bytesRead {
+			if (size*32 - uint64(bytesConsumed)) > uint64(len(buf)) {
+				tmp, _ := r.Read(buf)
+				if len(buf) != tmp {
+					panic("not enough bytes read")
+					return nil, fmt.Errorf("error reading fr array")
+				}
+				bytesRead += tmp
+			} else {
+				tmp, _ := r.Read(buf[:(32*size - uint64(bytesConsumed))])
+				if (32*size - uint64(bytesConsumed)) != uint64(tmp) {
+					panic("not enough bytes read")
+					return nil, fmt.Errorf("error reading fr array")
+				}
+				bytesRead += tmp
+			}
+			ptr = 0
+		}
+		array[i].SetBytes(buf[ptr*32 : (ptr+1)*32])
+		bytesConsumed += 32
+		ptr += 1
 	}
+	buf = nil
 	return array, nil
 }
 
@@ -164,7 +173,16 @@ func (pk *ProvingKey) WriteTo(w io.Writer) (n int64, err error) {
 	}
 
 	//Write EvaluationPermutationBigDomainBitReversed
-	n, err = WriteFrArray(w, pk.EvaluationPermutationBigDomainBitReversed)
+	singleSize := pk.Domain[1].Cardinality
+	n, err = WriteFrArray(w, pk.EvaluationPermutationBigDomainBitReversed[0:singleSize])
+	if err != nil {
+		return n, err
+	}
+	n, err = WriteFrArray(w, pk.EvaluationPermutationBigDomainBitReversed[singleSize:2*singleSize])
+	if err != nil {
+		return n, err
+	}
+	n, err = WriteFrArray(w, pk.EvaluationPermutationBigDomainBitReversed[2*singleSize:3*singleSize])
 	if err != nil {
 		return n, err
 	}

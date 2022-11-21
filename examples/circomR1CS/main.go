@@ -13,15 +13,11 @@ import (
 	"github.com/consensys/gnark/backend/piano"
 	"github.com/consensys/gnark/backend/plonk"
 	"github.com/consensys/gnark/frontend"
-	"github.com/pkg/profile"
 	"github.com/sunblaze-ucb/simpleMPI/mpi"
 )
 
 func main() {
-	if mpi.SelfRank == 0 {
-		defer profile.Start(profile.MemProfile).Stop()
-	}
-	runtime.GOMAXPROCS(1)
+	runtime.GOMAXPROCS(4)
 	dir, _ := os.Getwd()
 	fmt.Println("working directory: ", dir)
 

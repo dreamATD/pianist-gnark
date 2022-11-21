@@ -18,6 +18,7 @@ package piano
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"math/bits"
@@ -259,21 +260,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 
 		// compute Qk in canonical basis, completed with the public inputs
 
-		// compute the evaluation of ql(X)l(X) + qr(X)r(X) + qm(X)l(X)r(X)
-		// + qo(X)o(X) + qk(X) on the big domain coset with l(X), r(X) o(X)
-		// and the completed version of canonical qk(X)
-		//Critical Changelog CQk was copied in previous code, but right now it's not copied
-		gateConstraintBigXBitReversed = evaluateGateConstraintBigXBitReversed(
-			pk,
-			lBigXBitReversed,
-			rBigXBitReversed,
-			oBigXBitReversed,
-		)
 		
-		if mpi.SelfRank == 0 {
-			fmt.Println("gateConstraintBigXBitReversed evaluated, memory used:")
-			PrintMemUsage()
-		}
 
 		zBigXBitReversed = evaluateBigBitReversed(zCanonicalX, &pk.Domain[1])
 
@@ -290,6 +277,22 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 			eta,
 			gamma,
 		)
+
+		// compute the evaluation of ql(X)l(X) + qr(X)r(X) + qm(X)l(X)r(X)
+		// + qo(X)o(X) + qk(X) on the big domain coset with l(X), r(X) o(X)
+		// and the completed version of canonical qk(X)
+		//Critical Changelog CQk was copied in previous code, but right now it's not copied
+		gateConstraintBigXBitReversed = evaluateGateConstraintBigXBitReversed(
+			pk,
+			lBigXBitReversed,
+			rBigXBitReversed,
+			oBigXBitReversed,
+		)
+		
+		if mpi.SelfRank == 0 {
+			fmt.Println("gateConstraintBigXBitReversed evaluated, memory used:")
+			PrintMemUsage()
+		}
 		lBigXBitReversed = nil
 		rBigXBitReversed = nil
 		oBigXBitReversed = nil
@@ -697,21 +700,12 @@ func commitToQuotientX(h1, h2, h3 []fr.Element, proof *Proof, srs dkzg.SRS) erro
 func commitToQuotientOnY(h1, h2, h3 []fr.Element, proof *Proof, srs *kzg.SRS) error {
 	n := runtime.NumCPU() / 2
 	var err0, err1, err2 error
-//	chCommit0 := make(chan struct{}, 1)
-//	chCommit1 := make(chan struct{}, 1)
-//	go func() {
-		proof.Hy[0], err0 = kzg.Commit(h1, srs, n)
-//		close(chCommit0)
-//	}()
-//	go func() {
-		proof.Hy[1], err1 = kzg.Commit(h2, srs, n)
-//		close(chCommit1)
-//	}()
+	proof.Hy[0], err0 = kzg.Commit(h1, srs, n)
+	proof.Hy[1], err1 = kzg.Commit(h2, srs, n)
+
 	if proof.Hy[2], err2 = kzg.Commit(h3, srs, n); err2 != nil {
 		return err2
 	}
-//	<-chCommit0
-//	<-chCommit1
 
 	if err0 != nil {
 		return err0
@@ -725,28 +719,18 @@ func computeLROCanonicalX(ll, lr, lo []fr.Element, domain *fft.Domain) (cl, cr, 
 	cr = make([]fr.Element, domain.Cardinality)
 	co = make([]fr.Element, domain.Cardinality)
 
-//	chDone := make(chan error, 2)
+	copy(cl, ll)
+	domain.FFTInverse(cl, fft.DIF)
+	fft.BitReverse(cl)
 
-//	go func() {
-		copy(cl, ll)
-		domain.FFTInverse(cl, fft.DIF)
-		fft.BitReverse(cl)
-//		chDone <- nil
-//	}()
-//	go func() {
-		copy(cr, lr)
-		domain.FFTInverse(cr, fft.DIF)
-		fft.BitReverse(cr)
-//		chDone <- nil
-//	}()
+	copy(cr, lr)
+	domain.FFTInverse(cr, fft.DIF)
+	fft.BitReverse(cr)
+
 	copy(co, lo)
 	domain.FFTInverse(co, fft.DIF)
 	fft.BitReverse(co)
-//	err = <-chDone
-//	if err != nil {
-//		return
-//	}
-//	err = <-chDone
+
 	return
 }
 
@@ -905,6 +889,7 @@ func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 		}
 	})
 	qlBigXBR = nil
+	lBigXBR = nil
 	runtime.GC()
 	debug.FreeOSMemory()
 
@@ -919,6 +904,7 @@ func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 		}
 	})
 	qrBigXBR = nil
+	rBigXBR = nil
 	runtime.GC()
 	debug.FreeOSMemory()
 
@@ -933,6 +919,7 @@ func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 		}
 	})
 	qoBigXBR = nil
+	oBigXBR = nil
 	runtime.GC()
 	debug.FreeOSMemory()
 
@@ -1009,11 +996,22 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 	cosetShift.Set(&pk.Vk.CosetShift)
 	cosetShiftSquare.Square(&pk.Vk.CosetShift)
 
-	EvaluationPermutationBigDomainBitReversed, err := ReadFrArray(pk.ReadPtr)
-	if err != nil {
-		panic(err)
-	}
+	SBig, _ := ReadFrArray(pk.ReadPtr)
 
+	utils.Parallelize(int(pk.Domain[1].Cardinality), func(start, end int) {
+
+		var g0 fr.Element
+		for i := start; i < end; i++ {
+			_i := bits.Reverse64(uint64(i)) >> nn
+			g0.Mul(&SBig[_i], &eta).Add(&g0, &lBigXBR[_i]).Add(&g0, &gamma)
+			res[_i].Set(&g0)
+		}
+	})
+	SBig = nil
+	runtime.GC()
+	debug.FreeOSMemory()
+	SBig, _ = ReadFrArray(pk.ReadPtr)
+	
 	if mpi.SelfRank == 0 {
 		f, _ := os.Create("memPhasePeak.prof")
 		defer f.Close() // error handling omitted for example
@@ -1022,6 +1020,32 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 			panic(err)
 		}
 	}
+	utils.Parallelize(int(pk.Domain[1].Cardinality), func(start, end int) {
+		var g1 fr.Element
+
+		for i := start; i < end; i++ {
+			_i := bits.Reverse64(uint64(i)) >> nn
+			g1.Mul(&SBig[int(_i)], &eta).Add(&g1, &rBigXBR[_i]).Add(&g1, &gamma)
+			res[_i].Mul(&res[_i], &g1)
+		}
+	})
+	SBig = nil
+	runtime.GC()
+	debug.FreeOSMemory()
+	SBig, _ = ReadFrArray(pk.ReadPtr)
+	utils.Parallelize(int(pk.Domain[1].Cardinality), func(start, end int) {
+		var g2 fr.Element
+
+		for i := start; i < end; i++ {
+			_i := bits.Reverse64(uint64(i)) >> nn
+			g2.Mul(&SBig[int(_i)], &eta).Add(&g2, &oBigXBR[_i]).Add(&g2, &gamma)
+			res[_i].Mul(&res[_i], &g2)
+		}
+	})
+	SBig = nil
+	runtime.GC()
+	debug.FreeOSMemory()
+
 
 
 	utils.Parallelize(int(pk.Domain[1].Cardinality), func(start, end int) {
@@ -1029,9 +1053,7 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 		var evaluationIDBigDomain fr.Element
 		evaluationIDBigDomain.Exp(pk.Domain[1].Generator, big.NewInt(int64(start))).
 			Mul(&evaluationIDBigDomain, &pk.Domain[1].FrMultiplicativeGen)
-
 		var f [3]fr.Element
-		var g [3]fr.Element
 
 		for i := start; i < end; i++ {
 
@@ -1041,22 +1063,24 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 			f[0].Mul(&evaluationIDBigDomain, &eta).Add(&f[0], &lBigXBR[_i]).Add(&f[0], &gamma)
 			f[1].Mul(&evaluationIDBigDomain, &cosetShift).Mul(&f[1], &eta).Add(&f[1], &rBigXBR[_i]).Add(&f[1], &gamma)
 			f[2].Mul(&evaluationIDBigDomain, &cosetShiftSquare).Mul(&f[2], &eta).Add(&f[2], &oBigXBR[_i]).Add(&f[2], &gamma)
-
-			g[0].Mul(&EvaluationPermutationBigDomainBitReversed[_i], &eta).Add(&g[0], &lBigXBR[_i]).Add(&g[0], &gamma)
-			g[1].Mul(&EvaluationPermutationBigDomainBitReversed[int(_i)+nbElmts], &eta).Add(&g[1], &rBigXBR[_i]).Add(&g[1], &gamma)
-			g[2].Mul(&EvaluationPermutationBigDomainBitReversed[int(_i)+2*nbElmts], &eta).Add(&g[2], &oBigXBR[_i]).Add(&g[2], &gamma)
-
 			f[0].Mul(&f[0], &f[1]).Mul(&f[0], &f[2]).Mul(&f[0], &zBigXBR[_i])
-			g[0].Mul(&g[0], &g[1]).Mul(&g[0], &g[2]).Mul(&g[0], &zBigXBR[_is])
-
-			res[_i].Sub(&g[0], &f[0])
+			res[_i].Mul(&res[_i], &zBigXBR[_is])
+			res[_i].Sub(&res[_i], &f[0])
 
 			evaluationIDBigDomain.Mul(&evaluationIDBigDomain, &pk.Domain[1].Generator)
 		}
 	})
-	EvaluationPermutationBigDomainBitReversed = nil
 	runtime.GC()
 	debug.FreeOSMemory()
+
+	hasher := sha256.New()
+	for _, e := range res {
+		bytes := e.Bytes()
+		hasher.Write(bytes[:])
+	}
+	hash := hasher.Sum(nil)
+	fmt.Println("hash of res", hex.EncodeToString(hash))
+
 	return res
 }
 
@@ -1187,8 +1211,6 @@ func computeQuotientCanonicalX(pk *ProvingKey, gateConstraintBigXBitReversed, pe
 
 	h := make([]fr.Element, pk.Domain[1].Cardinality)
 
-	XnMinusOneBig := evaluateXnMinusOneBig(&pk.Domain[1], &pk.Domain[0])
-	XnMinusOneBig = fr.BatchInvert(XnMinusOneBig)
 
 	permFirstConstraintBigXBitReversed := make([]fr.Element, pk.Domain[1].Cardinality)
 	for i := 0; i < int(pk.Domain[0].Cardinality); i++ {
@@ -1201,6 +1223,14 @@ func computeQuotientCanonicalX(pk *ProvingKey, gateConstraintBigXBitReversed, pe
 	var one fr.Element
 	one.SetOne()
 
+	if mpi.SelfRank == 0 {
+		f, _ := os.Create("memPhasePeak2.prof")
+		defer f.Close() // error handling omitted for example
+		runtime.GC()    // get up-to-date statistics
+		if err := pprof.WriteHeapProfile(f); err != nil {
+			panic(err)
+		}
+	}
 	ratio := pk.Domain[1].Cardinality / pk.Domain[0].Cardinality
 
 	utils.Parallelize(int(pk.Domain[1].Cardinality), func(start, end int) {
@@ -1213,10 +1243,25 @@ func computeQuotientCanonicalX(pk *ProvingKey, gateConstraintBigXBitReversed, pe
 			h[_i].Mul(&permFirstConstraintBigXBitReversed[_i], &lambda).Mul(&h[_i], &t).
 				Add(&h[_i], &permConstraintBigXBitReversed[_i]).
 				Mul(&h[_i], &lambda).
-				Add(&h[_i], &gateConstraintBigXBitReversed[_i]).
-				Mul(&h[_i], &XnMinusOneBig[i%ratio])
+				Add(&h[_i], &gateConstraintBigXBitReversed[_i])
 		}
 	})
+	permConstraintBigXBitReversed = nil
+	gateConstraintBigXBitReversed = nil
+	zBigXBitReversed = nil
+	runtime.GC()
+	debug.FreeOSMemory()
+
+	XnMinusOneBig := evaluateXnMinusOneBig(&pk.Domain[1], &pk.Domain[0])
+	XnMinusOneBig = fr.BatchInvert(XnMinusOneBig)
+
+	utils.Parallelize(int(pk.Domain[1].Cardinality), func(start, end int) {
+		for i := uint64(start); i < uint64(end); i++ {
+			_i := bits.Reverse64(i) >> nn
+			h[_i].Mul(&h[_i], &XnMinusOneBig[i%ratio])
+		}
+	})
+	XnMinusOneBig = nil
 
 	pk.Domain[1].FFTInverse(h, fft.DIT, true)
 
