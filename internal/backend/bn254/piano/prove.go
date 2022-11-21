@@ -176,13 +176,13 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	if err := bindPublicData(&fs, "gamma", *pk.Vk, fullWitness[:spr.NbPublicVariables]); err != nil {
 		return nil, err
 	}
-	gamma, err := deriveRandomness(&fs, "gamma", &proof.LRO[0], &proof.LRO[1], &proof.LRO[2])
+	gamma, err := deriveRandomness(&fs, "gamma", false, &proof.LRO[0], &proof.LRO[1], &proof.LRO[2])
 	if err != nil {
 		return nil, err
 	}
 
 	// Fiat Shamir this
-	eta, err := deriveRandomness(&fs, "eta")
+	eta, err := deriveRandomness(&fs, "eta", false)
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +222,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	}
 
 	// derive lambda from the Comm(L), Comm(R), Comm(O), Com(Z)
-	lambda, err := deriveRandomness(&fs, "lambda", &proof.Z)
+	lambda, err := deriveRandomness(&fs, "lambda", false, &proof.Z)
 	if err != nil {
 		return nil, err
 	}
@@ -256,9 +256,14 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 //	}()
 
 	var gateConstraintBigXBitReversed, permConstraintBigXBitReversed []fr.Element
+<<<<<<< HEAD
 
 		// compute Qk in canonical basis, completed with the public inputs
 
+=======
+	chGateConstraint := make(chan struct{}, 1)
+	go func() {
+>>>>>>> 6ef2486f2e9cc44fdd849d4018fd4b34efccc187
 		// compute the evaluation of ql(X)l(X) + qr(X)r(X) + qm(X)l(X)r(X)
 		// + qo(X)o(X) + qk(X) on the big domain coset with l(X), r(X) o(X)
 		// and the completed version of canonical qk(X)
@@ -268,7 +273,10 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 			lBigXBitReversed,
 			rBigXBitReversed,
 			oBigXBitReversed,
+<<<<<<< HEAD
 			pk.CQk,
+=======
+>>>>>>> 6ef2486f2e9cc44fdd849d4018fd4b34efccc187
 		)
 		
 		if mpi.SelfRank == 0 {
@@ -320,7 +328,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	}
 
 	// derive alpha
-	alpha, err := deriveRandomness(&fs, "alpha", &proof.Hx[0], &proof.Hx[1], &proof.Hx[2])
+	alpha, err := deriveRandomness(&fs, "alpha", false, &proof.Hx[0], &proof.Hx[1], &proof.Hx[2])
 	if err != nil {
 		return nil, err
 	}
@@ -557,7 +565,16 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		return nil, err
 	}
 	// derive beta
-	beta, err := deriveRandomness(&fs, "beta", &proof.Hy[0], &proof.Hy[1], &proof.Hy[2])
+	ts := []*curve.G1Affine{
+		&proof.PartialBatchedProof.H,
+	}
+	for _, digest := range proof.PartialBatchedProof.ClaimedDigests {
+		ts = append(ts, &digest)
+	}
+	for _, digest := range proof.Hy {
+		ts = append(ts, &digest)
+	}
+	beta, err := deriveRandomness(&fs, "beta", true, ts...)
 	if err != nil {
 		return nil, err
 	}
@@ -872,7 +889,7 @@ func computeZCanonicalX(l, r, o []fr.Element, pk *ProvingKey, eta, gamma fr.Elem
 // evaluateGateConstraintBigXBitReversed computes the evaluation of
 // ql(X)L(X) + qr(X)r(X) + qm(X)l(X)r(X) + qo(X)o(X) + qk(X)
 // on the big domain coset.
-func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBigXBR, qkCX []fr.Element) []fr.Element {
+func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBigXBR []fr.Element) []fr.Element {
 	var qlBigXBR, qrBigXBR, qmBigXBR, qoBigXBR, qkBigXBR []fr.Element
 	var t1 []fr.Element
 	// Critical Change happened here
@@ -928,6 +945,7 @@ func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 	runtime.GC()
 	debug.FreeOSMemory()
 
+<<<<<<< HEAD
 	qkBigXBR = evaluateBigBitReversed(qkCX, &pk.Domain[1])
 	fmt.Println("qkBigXBR", size)
 	utils.Parallelize(size, func(start, end int) {
@@ -939,6 +957,27 @@ func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 	runtime.GC()
 	debug.FreeOSMemory()
 /*
+=======
+	go func() {
+		qlBigXBR = evaluateBigBitReversed(pk.Ql, &pk.Domain[1])
+		wg.Done()
+	}()
+	go func() {
+		qrBigXBR = evaluateBigBitReversed(pk.Qr, &pk.Domain[1])
+		wg.Done()
+	}()
+	go func() {
+		qmBigXBR = evaluateBigBitReversed(pk.Qm, &pk.Domain[1])
+		wg.Done()
+	}()
+	go func() {
+		qoBigXBR = evaluateBigBitReversed(pk.Qo, &pk.Domain[1])
+		wg.Done()
+	}()
+	qkBigXBR = evaluateBigBitReversed(pk.CQk, &pk.Domain[1])
+	wg.Wait()
+
+>>>>>>> 6ef2486f2e9cc44fdd849d4018fd4b34efccc187
 	utils.Parallelize(len(qkBigXBR), func(start, end int) {
 		var t0, t1 fr.Element
 		for i := start; i < end; i++ {
