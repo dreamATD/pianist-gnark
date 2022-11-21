@@ -256,14 +256,9 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 //	}()
 
 	var gateConstraintBigXBitReversed, permConstraintBigXBitReversed []fr.Element
-<<<<<<< HEAD
 
 		// compute Qk in canonical basis, completed with the public inputs
 
-=======
-	chGateConstraint := make(chan struct{}, 1)
-	go func() {
->>>>>>> 6ef2486f2e9cc44fdd849d4018fd4b34efccc187
 		// compute the evaluation of ql(X)l(X) + qr(X)r(X) + qm(X)l(X)r(X)
 		// + qo(X)o(X) + qk(X) on the big domain coset with l(X), r(X) o(X)
 		// and the completed version of canonical qk(X)
@@ -273,10 +268,6 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 			lBigXBitReversed,
 			rBigXBitReversed,
 			oBigXBitReversed,
-<<<<<<< HEAD
-			pk.CQk,
-=======
->>>>>>> 6ef2486f2e9cc44fdd849d4018fd4b34efccc187
 		)
 		
 		if mpi.SelfRank == 0 {
@@ -945,8 +936,7 @@ func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 	runtime.GC()
 	debug.FreeOSMemory()
 
-<<<<<<< HEAD
-	qkBigXBR = evaluateBigBitReversed(qkCX, &pk.Domain[1])
+	qkBigXBR = evaluateBigBitReversed(pk.CQk, &pk.Domain[1])
 	fmt.Println("qkBigXBR", size)
 	utils.Parallelize(size, func(start, end int) {
 		for i := start; i < end; i++ {
@@ -957,27 +947,6 @@ func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 	runtime.GC()
 	debug.FreeOSMemory()
 /*
-=======
-	go func() {
-		qlBigXBR = evaluateBigBitReversed(pk.Ql, &pk.Domain[1])
-		wg.Done()
-	}()
-	go func() {
-		qrBigXBR = evaluateBigBitReversed(pk.Qr, &pk.Domain[1])
-		wg.Done()
-	}()
-	go func() {
-		qmBigXBR = evaluateBigBitReversed(pk.Qm, &pk.Domain[1])
-		wg.Done()
-	}()
-	go func() {
-		qoBigXBR = evaluateBigBitReversed(pk.Qo, &pk.Domain[1])
-		wg.Done()
-	}()
-	qkBigXBR = evaluateBigBitReversed(pk.CQk, &pk.Domain[1])
-	wg.Wait()
-
->>>>>>> 6ef2486f2e9cc44fdd849d4018fd4b34efccc187
 	utils.Parallelize(len(qkBigXBR), func(start, end int) {
 		var t0, t1 fr.Element
 		for i := start; i < end; i++ {
