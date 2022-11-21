@@ -49,6 +49,9 @@ func Setup(ccs frontend.CompiledConstraintSystem, publicWitness *witness.Witness
 
 	switch tccs := ccs.(type) {
 	case *cs_bn254.SparseR1CS:
+		if publicWitness == nil {
+			return piano_bn254.Setup(tccs, nil)
+		}
 		w, ok := publicWitness.Vector.(*witness_bn254.Witness)
 		if !ok {
 			return nil, nil, witness.ErrInvalidWitness
