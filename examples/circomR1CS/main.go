@@ -21,6 +21,8 @@ import (
 var (
 	circuitPath string
 	r1csPath    string
+	pkPath      string
+	vkPath      string
 )
 
 func parseConfig(jsonFile string) {
@@ -39,6 +41,10 @@ func parseConfig(jsonFile string) {
 	circuitPath = m["circuitPath."+strconv.Itoa(int(mpi.SelfRank))].(string)
 	//get the R1CS path
 	r1csPath = m["r1csPath."+strconv.Itoa(int(mpi.SelfRank))].(string)
+	//get the pk path
+	pkPath = m["pkPath."+strconv.Itoa(int(mpi.SelfRank))].(string)
+	//get the vk path
+	vkPath = m["vkPath."+strconv.Itoa(int(mpi.SelfRank))].(string)
 }
 
 func main() {
@@ -59,15 +65,13 @@ func main() {
 		f.Close()
 
 		pk, vk, err := piano.Setup(ccs, nil)
-		outName := fmt.Sprintf("pk%d", mpi.SelfRank)
-		f, _ = os.Create(outName)
+		f, _ = os.Create(pkPath)
 		_, err = pk.WriteTo(f)
 		if err != nil {
 			panic(err)
 		}
 		f.Close()
-		outName = fmt.Sprintf("vk%d", mpi.SelfRank)
-		f, _ = os.Create(outName)
+		f, _ = os.Create(vkPath)
 		_, err = vk.WriteTo(f)
 		if err != nil {
 			panic(err)
@@ -102,6 +106,7 @@ func main() {
 		// public data consists the polynomials describing the constants involved
 		// in the constraints, the polynomial describing the permutation ("grand
 		// product argument"), and the FFT domains.
+		piano.SetPKVKPath(ccs, pkPath, vkPath)
 		pk, _, err := piano.Setup(ccs, witnessPublic)
 		{
 			f, err := os.Create("memSetup.prof")

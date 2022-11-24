@@ -38,6 +38,8 @@ import (
 var (
 	globalDomain [2]*fft.Domain
 	globalSRS    *kzg.SRS
+	pkPath string
+	vkPath string
 )
 
 // ProvingKey stores the data needed to generate a proof:
@@ -99,6 +101,11 @@ type VerifyingKey struct {
 	// Commitments to ql, qr, qm, qo prepended with as many zeroes (ones for l) as there are public inputs.
 	// In particular Qk is not complete.
 	Ql, Qr, Qm, Qo, Qk kzg.Digest
+}
+
+func SetPKVKPath(pk string, vk string) {
+	pkPath = pk
+	vkPath = vk
 }
 
 // Setup sets proving and verifying keys
@@ -285,15 +292,13 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 			f, _ := os.Open("GlobalSRS")
 			globalSRS.ReadFrom(f)
 		}
-		outName := fmt.Sprintf("pk%d", mpi.SelfRank)
-		f, _ := os.Open(outName)
+		f, _ := os.Open(pkPath)
 		_, err2 := pk.ReadFrom(f)
 		pk.ReadPtr = f
 		if err2 != nil {
 			panic(err2)
 		}
-		outName = fmt.Sprintf("vk%d", mpi.SelfRank)
-		f, _ = os.Open(outName)
+		f, _ = os.Open(vkPath)
 		_, err2 = vk.ReadFrom(f)
 		if err2 != nil {
 			panic(err2)
