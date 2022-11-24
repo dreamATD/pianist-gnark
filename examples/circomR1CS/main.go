@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	_ "net/http/pprof"
@@ -8,6 +9,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"strconv"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/piano"
@@ -16,18 +18,43 @@ import (
 	"github.com/sunblaze-ucb/simpleMPI/mpi"
 )
 
+var (
+	circuitPath string
+	r1csPath    string
+)
+
+func parseConfig(jsonFile string) {
+	//parse Json file to get the proper circuit path
+	//load json
+	file, err := os.Open(jsonFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+	var f interface{}
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&f)
+	m := f.(map[string]interface{})
+	//get the circuit path
+	circuitPath = m["circuitPath."+strconv.Itoa(int(mpi.SelfRank))].(string)
+	//get the R1CS path
+	r1csPath = m["r1csPath."+strconv.Itoa(int(mpi.SelfRank))].(string)
+}
+
 func main() {
 	runtime.GOMAXPROCS(4)
 	dir, _ := os.Getwd()
 	fmt.Println("working directory: ", dir)
 
+	parseConfig("circuitConfig.json")
+
 	mode := os.Args[1]
 	if mode == "compile" {
-		ccs, err := ReadR1CS("r1cs")
+		ccs, err := ReadR1CS(r1csPath)
 		if err != nil {
 			panic(err)
 		}
-		f, _ := os.Create("compiledCircuit")
+		f, _ := os.Create(circuitPath)
 		ccs.WriteTo(f)
 		f.Close()
 
@@ -53,7 +80,7 @@ func main() {
 		// Witnesses instantiation. Witness is known only by the prover,
 		// while public w is a public data known by the verifier.
 		ccs := plonk.NewCS(ecc.BN254)
-		f, _ := os.Open("compiledCircuit")
+		f, _ := os.Open(circuitPath)
 		ccs.ReadFrom(f)
 		f.Close()
 		var w R1CSCircuit

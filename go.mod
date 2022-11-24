@@ -1,6 +1,6 @@
 module github.com/consensys/gnark
 
-go 1.17
+go 1.19
 
 require (
 	github.com/consensys/bavard v0.1.13
@@ -9,27 +9,19 @@ require (
 	github.com/leanovate/gopter v0.2.9
 	github.com/rs/zerolog v1.26.1
 	github.com/stretchr/testify v1.8.0
-	github.com/sunblaze-ucb/simpleMPI v0.0.0-20221116051826-70e801eec087
+	github.com/sunblaze-ucb/simpleMPI v0.0.0-20221124005545-f5f10c1e9ea4
 
 )
 
 require (
-	github.com/DataDog/datadog-go/v5 v5.0.2 // indirect
-	github.com/DataDog/gostackparse v0.5.0 // indirect
-	github.com/Microsoft/go-winio v0.5.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/felixge/fgprof v0.9.3 // indirect
-	github.com/google/pprof v0.0.0-20211214055906-6f57359322fd // indirect
-	github.com/google/uuid v1.3.0 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mmcloughlin/addchain v0.4.0 // indirect
-	github.com/pkg/profile v1.7.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
 	golang.org/x/sys v0.1.0 // indirect
-	gopkg.in/DataDog/dd-trace-go.v1 v1.43.1 // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
