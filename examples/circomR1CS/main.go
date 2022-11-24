@@ -36,6 +36,9 @@ func parseConfig(jsonFile string) {
 	var f interface{}
 	decoder := json.NewDecoder(file)
 	err = decoder.Decode(&f)
+	if err != nil {
+		log.Fatal(err)
+	}
 	m := f.(map[string]interface{})
 	//get the circuit path
 	circuitPath = m["circuitPath."+strconv.Itoa(int(mpi.SelfRank))].(string)
@@ -65,6 +68,9 @@ func main() {
 		f.Close()
 
 		pk, vk, err := piano.Setup(ccs, nil)
+		if err != nil {
+			panic(err)
+		}
 		f, _ = os.Create(pkPath)
 		_, err = pk.WriteTo(f)
 		if err != nil {

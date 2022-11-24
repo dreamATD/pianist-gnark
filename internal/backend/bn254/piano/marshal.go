@@ -316,7 +316,10 @@ func (vk *VerifyingKey) WriteTo(w io.Writer) (n int64, err error) {
 		return 0, err
 	}
 	//Write KZGSRS
-	vk.KZGSRS.WriteTo(w)
+	g20 := vk.KZGSRS.G2[0].Bytes()
+	g21 := vk.KZGSRS.G2[1].Bytes()
+	w.Write(g20[:])
+	w.Write(g21[:])
 	//Write CosetShift
 	CosetShiftBuf := vk.CosetShift.Bytes()
 	_, err = w.Write(CosetShiftBuf[:])
@@ -390,7 +393,18 @@ func (vk *VerifyingKey) ReadFrom(r io.Reader) (int64, error) {
 	}
 	vk.NbPublicVariables = binary.LittleEndian.Uint64(nbPublicVariablesBuf)
 	//Read KZGSRS
-	vk.KZGSRS.ReadFrom(r)
+	g20 := make([]byte, 64)
+	g21 := make([]byte, 64)
+	_, err = r.Read(g20)
+	if err != nil {
+		panic(err)
+	}
+	_, err = r.Read(g21)
+	if err != nil {
+		panic(err)
+	}
+	vk.KZGSRS.G2[0].SetBytes(g20)
+	vk.KZGSRS.G2[1].SetBytes(g21)
 	//Read CosetShift
 	CosetShiftBuf := make([]byte, 32)
 	_, err = r.Read(CosetShiftBuf)
