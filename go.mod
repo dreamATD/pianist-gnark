@@ -9,7 +9,7 @@ require (
 	github.com/leanovate/gopter v0.2.9
 	github.com/rs/zerolog v1.26.1
 	github.com/stretchr/testify v1.8.0
-	github.com/sunblaze-ucb/simpleMPI v0.0.0-20221124005545-f5f10c1e9ea4
+	github.com/sunblaze-ucb/simpleMPI v0.0.0-20221124064852-e52f6cdbea54
 
 )
 
