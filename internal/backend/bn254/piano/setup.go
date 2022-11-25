@@ -306,25 +306,6 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 		f.Close()
 
 		pk.Vk = &vk
-		offset := spr.NbPublicVariables
-		pk.CQk = make([]fr.Element, pk.Domain[0].Cardinality)
-		pk.LQk = make([]fr.Element, pk.Domain[0].Cardinality)
-		for i := 0; i < spr.NbPublicVariables; i++ {
-			pk.CQk[i].Set(&publicWitness[i])
-			pk.LQk[i].Set(&publicWitness[i])
-		}
-		for i := 0; i < nbConstraints; i++ {
-			pk.CQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
-			pk.LQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
-		}
-		pk.Domain[0].FFTInverse(pk.CQk, fft.DIF)
-		fft.BitReverse(pk.CQk)
-
-		var err error
-		if vk.Qk, err = dkzg.Commit(pk.CQk, vk.KZGSRS); err != nil {
-			return nil, nil, err
-		}
-
 		return &pk, &vk, nil
 	}
 }

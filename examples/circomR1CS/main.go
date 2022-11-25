@@ -7,8 +7,6 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"runtime"
-	"runtime/debug"
-	"runtime/pprof"
 	"strconv"
 
 	"github.com/consensys/gnark-crypto/ecc"
@@ -51,7 +49,7 @@ func parseConfig(jsonFile string) {
 }
 
 func main() {
-	runtime.GOMAXPROCS(4)
+	runtime.GOMAXPROCS(8)
 	dir, _ := os.Getwd()
 	fmt.Println("working directory: ", dir)
 
@@ -114,25 +112,12 @@ func main() {
 		// product argument"), and the FFT domains.
 		piano.SetPKVKPath(ccs, pkPath, vkPath)
 		pk, _, err := piano.Setup(ccs, witnessPublic)
-		{
-			f, err := os.Create("memSetup.prof")
-			if err != nil {
-				log.Fatal("could not create memory profile: ", err)
-			}
-			defer f.Close() // error handling omitted for example
-			runtime.GC()    // get up-to-date statistics
-			if err := pprof.WriteHeapProfile(f); err != nil {
-				log.Fatal("could not write memory profile: ", err)
-			}
-		}
 
 		//_, err := piano.Setup(r1cs, kate, &publicWitness)
 		if err != nil {
 			log.Fatal(err)
 		}
-
-		debug.FreeOSMemory()
-		_, err = piano.Prove(ccs, pk, witnessFull)
+		_, err = piano.Prove(ccs, pk, witnessFull, witnessPublic)
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -93,9 +93,35 @@ func PrintMemUsage() {
 	fmt.Printf("\tNumGC = %v", m.NumGC)
 	fmt.Printf("\t GODEBUG = %s\n", os.Getenv("GODEBUG"))
 }
+
+func postSetup(spr *cs.SparseR1CS, pk *ProvingKey, vk *VerifyingKey, publicWitness []fr.Element) error {
+	offset := spr.NbPublicVariables
+	nbConstraints := len(spr.Constraints)
+	pk.CQk = make([]fr.Element, pk.Domain[0].Cardinality)
+	pk.LQk = make([]fr.Element, pk.Domain[0].Cardinality)
+	for i := 0; i < spr.NbPublicVariables; i++ {
+		pk.CQk[i].Set(&publicWitness[i])
+		pk.LQk[i].Set(&publicWitness[i])
+	}
+	for i := 0; i < nbConstraints; i++ {
+		pk.CQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
+		pk.LQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
+	}
+	pk.Domain[0].FFTInverse(pk.CQk, fft.DIF)
+	fft.BitReverse(pk.CQk)
+
+	var err error
+	if vk.Qk, err = dkzg.Commit(pk.CQk, vk.KZGSRS); err != nil {
+		panic(err)
+	}
+	return nil
+}
 // Prove from the public data
-func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness, opt backend.ProverConfig) (*Proof, error) {
+func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness, publicWitness bn254witness.Witness, opt backend.ProverConfig) (*Proof, error) {
 	fmt.Println("Prover started")
+
+	postSetup(spr, pk, pk.Vk, publicWitness)
+
 	log := logger.Logger().With().Str("curve", spr.CurveID().String()).Int("nbConstraints", len(spr.Constraints)).Str("backend", "piano").Logger()
 	start := time.Now()
 	// pick a hash function that will be used to derive the challenges
@@ -430,7 +456,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		return nil, err
 	}
 
-	if mpi.SelfRank != 0 {
+	if mpi.SelfRank == 0 {
 		log.Debug().Dur("took", time.Since(start)).Msg("prover done")
 		if err != nil {
 			return nil, err

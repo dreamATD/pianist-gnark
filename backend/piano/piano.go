@@ -78,7 +78,7 @@ func Setup(ccs frontend.CompiledConstraintSystem, publicWitness *witness.Witness
 //		will executes all the prover computations, even if the witness is invalid
 //	 will produce an invalid proof
 //		internally, the solution vector to the SparseR1CS will be filled with random values which may impact benchmarking
-func Prove(ccs frontend.CompiledConstraintSystem, pk ProvingKey, fullWitness *witness.Witness, opts ...backend.ProverOption) (Proof, error) {
+func Prove(ccs frontend.CompiledConstraintSystem, pk ProvingKey, fullWitness *witness.Witness, publicWitness *witness.Witness, opts ...backend.ProverOption) (Proof, error) {
 
 	// apply options
 	opt, err := backend.NewProverConfig(opts...)
@@ -89,10 +89,11 @@ func Prove(ccs frontend.CompiledConstraintSystem, pk ProvingKey, fullWitness *wi
 	switch tccs := ccs.(type) {
 	case *cs_bn254.SparseR1CS:
 		w, ok := fullWitness.Vector.(*witness_bn254.Witness)
-		if !ok {
+		wPub, okPub := publicWitness.Vector.(*witness_bn254.Witness)
+		if !ok || !okPub {
 			return nil, witness.ErrInvalidWitness
 		}
-		return piano_bn254.Prove(tccs, pk.(*piano_bn254.ProvingKey), *w, opt)
+		return piano_bn254.Prove(tccs, pk.(*piano_bn254.ProvingKey), *w, *wPub, opt)
 
 	default:
 		panic("unimplemented")
