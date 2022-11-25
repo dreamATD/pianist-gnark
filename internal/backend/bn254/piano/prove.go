@@ -369,15 +369,12 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		fmt.Println("foldedHx evaluated, memory used:")
 		PrintMemUsage()
 	}
-	S1Canonical, err := ReadFrArray(pk.ReadPtr)
 	if err != nil {
 		return nil, err
 	}
-	S2Canonical, err := ReadFrArray(pk.ReadPtr)
 	if err != nil {
 		return nil, err
 	}
-	S3Canonical, err := ReadFrArray(pk.ReadPtr)
 	if err != nil {
 		return nil, err
 	}
@@ -391,14 +388,11 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		pk.Qm,
 		pk.Qo,
 		pk.CQk,
-		S1Canonical,
-		S2Canonical,
-		S3Canonical,
+		pk.S1Canonical,
+		pk.S2Canonical,
+		pk.S3Canonical,
 		zCanonicalX,
 	}
-	S1Canonical = nil
-	S2Canonical = nil
-	S3Canonical = nil
 	
 	
 	dkzgDigests := []dkzg.Digest{
@@ -1045,7 +1039,7 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 	}
 	hash := hasher.Sum(nil)
 	fmt.Println("hash of res", hex.EncodeToString(hash))
-
+	pk.EvaluationPermutationBigDomainBitReversed = nil
 	return res
 }
 
