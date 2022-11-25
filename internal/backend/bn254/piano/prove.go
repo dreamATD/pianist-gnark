@@ -996,8 +996,10 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 	cosetShift.Set(&pk.Vk.CosetShift)
 	cosetShiftSquare.Square(&pk.Vk.CosetShift)
 
-	SBig, _ := ReadFrArray(pk.ReadPtr)
-
+	SBig, err := ReadFrArray(pk.ReadPtr)
+	if err != nil {
+		panic(err)
+	}
 	utils.Parallelize(int(pk.Domain[1].Cardinality), func(start, end int) {
 
 		var g0 fr.Element
