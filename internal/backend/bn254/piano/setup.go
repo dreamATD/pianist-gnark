@@ -56,6 +56,8 @@ type ProvingKey struct {
 	// Verifying Key is embedded into the proving key (needed by Prove)
 	Vk *VerifyingKey
 
+	FinishedCalcEvelPerm chan error
+
 	// qr,ql,qm,qo (in canonical basis).
 	Ql, Qr, Qm, Qo []fr.Element
 

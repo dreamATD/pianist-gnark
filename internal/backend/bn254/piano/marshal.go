@@ -134,6 +134,16 @@ func ReadInt64Array(r io.Reader) ([]int64, error) {
 func (pk *ProvingKey) WriteTo(w io.Writer) (n int64, err error) {
 	//Will not write pk.Vk
 
+	// Write Domain
+	pk.Domain[0].WriteTo(w)
+	pk.Domain[1].WriteTo(w)
+
+	//Write Permutation
+	n, err = WriteInt64Array(w, pk.Permutation)
+	if err != nil {
+		return n, err
+	}
+
 	//Write Ql, Qr, Qm, Qo
 	n, err = WriteFrArray(w, pk.Ql)
 	if err != nil {
@@ -162,23 +172,28 @@ func (pk *ProvingKey) WriteTo(w io.Writer) (n int64, err error) {
 		return n, err
 	}
 
-	// Write Domain
-	pk.Domain[0].WriteTo(w)
-	pk.Domain[1].WriteTo(w)
-
-	//Write Permutation
-	n, err = WriteInt64Array(w, pk.Permutation)
-	if err != nil {
-		return n, err
-	}
-
 	return n, nil
 }
 
 // ReadFrom reads from binary representation in r into ProvingKey
 func (pk *ProvingKey) ReadFrom(r io.Reader) (int64, error) {
-	//Read Ql, Qr, Qm, Qo
 	var err error
+
+	//Read Domain
+	pk.Domain[0].ReadFrom(r)
+	pk.Domain[1].ReadFrom(r)
+	//Read Permutation
+	pk.Permutation, err = ReadInt64Array(r)
+	if err != nil {
+		return 0, err
+	}
+	pk.FinishedCalcEvelPerm = make(chan error, 1)
+	go func() {
+		ccomputePermutationPolynomials(pk)
+		pk.FinishedCalcEvelPerm <- nil
+	}()
+
+	//Read Ql, Qr, Qm, Qo
 	pk.Ql, err = ReadFrArray(r)
 	if err != nil {
 		return 0, err
@@ -201,14 +216,6 @@ func (pk *ProvingKey) ReadFrom(r io.Reader) (int64, error) {
 		return 0, err
 	}
 	pk.LQk, err = ReadFrArray(r)
-	if err != nil {
-		return 0, err
-	}
-	//Read Domain
-	pk.Domain[0].ReadFrom(r)
-	pk.Domain[1].ReadFrom(r)
-	//Read Permutation
-	pk.Permutation, err = ReadInt64Array(r)
 	if err != nil {
 		return 0, err
 	}
