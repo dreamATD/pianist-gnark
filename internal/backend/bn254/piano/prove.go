@@ -24,8 +24,6 @@ import (
 	"math/bits"
 	"os"
 	"runtime"
-	"runtime/debug"
-	"runtime/pprof"
 	"sync"
 	"time"
 
@@ -85,7 +83,7 @@ func bToMb(b uint64) uint64 {
 }
 func PrintMemUsage() {
 	var m runtime.MemStats
-	debug.FreeOSMemory()
+	
 	runtime.ReadMemStats(&m)
 	// For info on each, see: https://golang.org/pkg/runtime/#MemStats
 	fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
@@ -199,7 +197,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	lSmallX = nil
 	rSmallX = nil
 	oSmallX = nil
-	runtime.GC()
+	
 	if err != nil {
 		return nil, err
 	}
@@ -304,8 +302,8 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	gateConstraintBigXBitReversed = nil
 	permConstraintBigXBitReversed = nil
 	zBigXBitReversed = nil
-	runtime.GC()
-	debug.FreeOSMemory()
+	
+	
 	if mpi.SelfRank == 0 {
 		fmt.Println("computeQuotientCanonicalX evaluated, memory used:")
 		PrintMemUsage()
@@ -401,8 +399,8 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	S1Canonical = nil
 	S2Canonical = nil
 	S3Canonical = nil
-	runtime.GC()
-	debug.FreeOSMemory()
+	
+	
 	dkzgDigests := []dkzg.Digest{
 		foldedHxDigest,
 		proof.LRO[0],
@@ -418,18 +416,10 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		pk.Vk.S[2],
 		proof.Z,
 	}
-	debug.FreeOSMemory()
+	
 	if mpi.SelfRank == 0 {
 		fmt.Println("dkzgDigests evaluated, memory used:")
 		PrintMemUsage()
-	}
-	if mpi.SelfRank == 0 {
-		f, _ := os.Create("memPhase0.5.prof")
-		defer f.Close() // error handling omitted for example
-		runtime.GC()    // get up-to-date statistics
-		if err := pprof.WriteHeapProfile(f); err != nil {
-			panic(err)
-		}
 	}
 
 	// Batch open the first list of polynomials
@@ -444,15 +434,6 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 
 	if err != nil {
 		return nil, err
-	}
-	
-	if mpi.SelfRank == 0 {
-		f, _ := os.Create("memPhase1.prof")
-		defer f.Close() // error handling omitted for example
-		runtime.GC()    // get up-to-date statistics
-		if err := pprof.WriteHeapProfile(f); err != nil {
-			panic(err)
-		}
 	}
 
 	if mpi.SelfRank != 0 {
@@ -628,13 +609,6 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		return nil, err
 	}
 	
-	{
-		f, _ := os.Create("memPhase2.prof")
-		defer f.Close() // error handling omitted for example
-		runtime.GC()    // get up-to-date statistics
-		if err := pprof.WriteHeapProfile(f); err != nil {
-		}
-	}
 	return proof, nil
 }
 
@@ -877,8 +851,8 @@ func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 		}
 	})
 	qmBigXBR = nil
-	runtime.GC()
-	debug.FreeOSMemory()
+	
+	
 
 
 	qlBigXBR = evaluateBigBitReversed(pk.Ql, &pk.Domain[1])
@@ -890,8 +864,8 @@ func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 	})
 	qlBigXBR = nil
 	lBigXBR = nil
-	runtime.GC()
-	debug.FreeOSMemory()
+	
+	
 
 	qrBigXBR = evaluateBigBitReversed(pk.Qr, &pk.Domain[1])
 
@@ -905,8 +879,8 @@ func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 	})
 	qrBigXBR = nil
 	rBigXBR = nil
-	runtime.GC()
-	debug.FreeOSMemory()
+	
+	
 
 	qoBigXBR = evaluateBigBitReversed(pk.Qo, &pk.Domain[1])
 
@@ -920,8 +894,8 @@ func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 	})
 	qoBigXBR = nil
 	oBigXBR = nil
-	runtime.GC()
-	debug.FreeOSMemory()
+	
+	
 
 	qkBigXBR = evaluateBigBitReversed(pk.CQk, &pk.Domain[1])
 	fmt.Println("qkBigXBR", size)
@@ -931,8 +905,8 @@ func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 		}
 	})
 	t1 = nil
-	runtime.GC()
-	debug.FreeOSMemory()
+	
+	
 /*
 	utils.Parallelize(len(qkBigXBR), func(start, end int) {
 		var t0, t1 fr.Element
@@ -1014,14 +988,6 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 	})
 	SBig = pk.EvaluationPermutationBigDomainBitReversed[nbElmts : 2*nbElmts]
 	
-	if mpi.SelfRank == 0 {
-		f, _ := os.Create("memPhasePeak.prof")
-		defer f.Close() // error handling omitted for example
-		runtime.GC()    // get up-to-date statistics
-		if err := pprof.WriteHeapProfile(f); err != nil {
-			panic(err)
-		}
-	}
 	utils.Parallelize(int(pk.Domain[1].Cardinality), func(start, end int) {
 		var g1 fr.Element
 
@@ -1042,8 +1008,8 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 		}
 	})
 	SBig = nil
-	runtime.GC()
-	debug.FreeOSMemory()
+	
+	
 
 
 
@@ -1069,8 +1035,8 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 			evaluationIDBigDomain.Mul(&evaluationIDBigDomain, &pk.Domain[1].Generator)
 		}
 	})
-	runtime.GC()
-	debug.FreeOSMemory()
+	
+	
 
 	hasher := sha256.New()
 	for _, e := range res {
@@ -1222,14 +1188,6 @@ func computeQuotientCanonicalX(pk *ProvingKey, gateConstraintBigXBitReversed, pe
 	var one fr.Element
 	one.SetOne()
 
-	if mpi.SelfRank == 0 {
-		f, _ := os.Create("memPhasePeak2.prof")
-		defer f.Close() // error handling omitted for example
-		runtime.GC()    // get up-to-date statistics
-		if err := pprof.WriteHeapProfile(f); err != nil {
-			panic(err)
-		}
-	}
 	ratio := pk.Domain[1].Cardinality / pk.Domain[0].Cardinality
 
 	utils.Parallelize(int(pk.Domain[1].Cardinality), func(start, end int) {
@@ -1248,8 +1206,8 @@ func computeQuotientCanonicalX(pk *ProvingKey, gateConstraintBigXBitReversed, pe
 	permConstraintBigXBitReversed = nil
 	gateConstraintBigXBitReversed = nil
 	zBigXBitReversed = nil
-	runtime.GC()
-	debug.FreeOSMemory()
+	
+	
 
 	XnMinusOneBig := evaluateXnMinusOneBig(&pk.Domain[1], &pk.Domain[0])
 	XnMinusOneBig = fr.BatchInvert(XnMinusOneBig)

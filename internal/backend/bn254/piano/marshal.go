@@ -172,34 +172,6 @@ func (pk *ProvingKey) WriteTo(w io.Writer) (n int64, err error) {
 		return n, err
 	}
 
-	//Write EvaluationPermutationBigDomainBitReversed
-	singleSize := pk.Domain[1].Cardinality
-	n, err = WriteFrArray(w, pk.EvaluationPermutationBigDomainBitReversed[0:singleSize])
-	if err != nil {
-		return n, err
-	}
-	n, err = WriteFrArray(w, pk.EvaluationPermutationBigDomainBitReversed[singleSize:2*singleSize])
-	if err != nil {
-		return n, err
-	}
-	n, err = WriteFrArray(w, pk.EvaluationPermutationBigDomainBitReversed[2*singleSize:3*singleSize])
-	if err != nil {
-		return n, err
-	}
-	//Write S1Canonical, S2Canonical, S3Canonical
-	n, err = WriteFrArray(w, pk.S1Canonical)
-	if err != nil {
-		return n, err
-	}
-	n, err = WriteFrArray(w, pk.S2Canonical)
-	if err != nil {
-		return n, err
-	}
-	n, err = WriteFrArray(w, pk.S3Canonical)
-	if err != nil {
-		return n, err
-	}
-
 	return n, nil
 }
 
