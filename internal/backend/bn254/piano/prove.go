@@ -18,7 +18,7 @@ package piano
 
 import (
 	"crypto/sha256"
-	"encoding/hex"
+	//"encoding/hex"
 	"fmt"
 	"math/big"
 	"math/bits"
@@ -82,6 +82,7 @@ func bToMb(b uint64) uint64 {
     return b / 1024 / 1024
 }
 func PrintMemUsage() {
+
 	var m runtime.MemStats
 	
 	runtime.ReadMemStats(&m)
@@ -252,34 +253,37 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		return nil, err
 	}
 
-//	chEvalBL := make(chan struct{}, 1)
-//	chEvalBR := make(chan struct{}, 1)
-//	chEvalBO := make(chan struct{}, 1)
-//	go func() {
+	chEvalBL := make(chan struct{}, 1)
+	chEvalBR := make(chan struct{}, 1)
+	chEvalBO := make(chan struct{}, 1)
+	go func() {
 		lBigXBitReversed = evaluateBigBitReversed(lCanonicalX, &pk.Domain[1])
 		if mpi.SelfRank == 0 {
 			fmt.Println("lBigXBitReversed evaluated, memory used:")
 			PrintMemUsage()
 		}
-//		close(chEvalBL)
-//	}()
-//	go func() {
+		close(chEvalBL)
+	}()
+	go func() {
 		rBigXBitReversed = evaluateBigBitReversed(rCanonicalX, &pk.Domain[1])
 		if mpi.SelfRank == 0 {
 			fmt.Println("rBigXBitReversed evaluated, memory used:")
 			PrintMemUsage()
 		}
-//		close(chEvalBR)
-//	}()
-//	go func() {
+		close(chEvalBR)
+	}()
+	go func() {
 		oBigXBitReversed = evaluateBigBitReversed(oCanonicalX, &pk.Domain[1])
 		if mpi.SelfRank == 0 {
 			fmt.Println("oBigXBitReversed evaluated, memory used:")
 			PrintMemUsage()
 		}
-//		close(chEvalBO)
-//	}()
-
+		close(chEvalBO)
+	}()
+	<- chEvalBL
+	<- chEvalBR
+	<- chEvalBO
+	
 	var gateConstraintBigXBitReversed, permConstraintBigXBitReversed []fr.Element
 
 		// compute Qk in canonical basis, completed with the public inputs
@@ -456,7 +460,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		return nil, err
 	}
 
-	if mpi.SelfRank == 0 {
+	if mpi.SelfRank != 0 {
 		log.Debug().Dur("took", time.Since(start)).Msg("prover done")
 		if err != nil {
 			return nil, err
@@ -628,6 +632,14 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	if err != nil {
 		return nil, err
 	}
+
+	if mpi.SelfRank == 0 {
+		log.Debug().Dur("took", time.Since(start)).Msg("prover done")
+		if err != nil {
+			return nil, err
+		}
+		return proof, nil
+	}
 	
 	return proof, nil
 }
@@ -712,19 +724,23 @@ func computeLROCanonicalX(ll, lr, lo []fr.Element, domain *fft.Domain) (cl, cr, 
 	cl = make([]fr.Element, domain.Cardinality)
 	cr = make([]fr.Element, domain.Cardinality)
 	co = make([]fr.Element, domain.Cardinality)
-
-	copy(cl, ll)
-	domain.FFTInverse(cl, fft.DIF)
-	fft.BitReverse(cl)
-
-	copy(cr, lr)
-	domain.FFTInverse(cr, fft.DIF)
-	fft.BitReverse(cr)
-
+	chDone := make(chan error, 2)
+	go func() {
+		copy(cl, ll)
+		domain.FFTInverse(cl, fft.DIF)
+		fft.BitReverse(cl)
+		chDone <- nil
+	} ()
+	go func() {
+		copy(cr, lr)
+		domain.FFTInverse(cr, fft.DIF)
+		fft.BitReverse(cr)
+		chDone <- nil
+	} ()
 	copy(co, lo)
 	domain.FFTInverse(co, fft.DIF)
 	fft.BitReverse(co)
-
+	<-chDone
 	return
 }
 
@@ -871,9 +887,6 @@ func evaluateGateConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 		}
 	})
 	qmBigXBR = nil
-	
-	
-
 
 	qlBigXBR = evaluateBigBitReversed(pk.Ql, &pk.Domain[1])
 	utils.Parallelize(size, func(start, end int) {
@@ -979,7 +992,6 @@ func evaluateGateConstraintBigYBitReversed(lBigYBR, rBigYBR, oBigYBR, qlBigYBR, 
 func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBigXBR, zBigXBR []fr.Element, eta, gamma fr.Element) []fr.Element {
 	nbElmts := int(pk.Domain[1].Cardinality)
 
-
 	ccomputePermutationPolynomials(pk)
 
 	// computes
@@ -995,43 +1007,35 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 	cosetShiftSquare.Square(&pk.Vk.CosetShift)
 
 	//SBig, err := ReadFrArray(pk.ReadPtr)
-	SBig := pk.EvaluationPermutationBigDomainBitReversed[0 : nbElmts]
 	
 	utils.Parallelize(int(pk.Domain[1].Cardinality), func(start, end int) {
 
 		var g0 fr.Element
 		for i := start; i < end; i++ {
 			_i := bits.Reverse64(uint64(i)) >> nn
-			g0.Mul(&SBig[_i], &eta).Add(&g0, &lBigXBR[_i]).Add(&g0, &gamma)
+			g0.Mul(&pk.EvaluationPermutationBigDomainBitReversed[_i], &eta).Add(&g0, &lBigXBR[_i]).Add(&g0, &gamma)
 			res[_i].Set(&g0)
 		}
 	})
-	SBig = pk.EvaluationPermutationBigDomainBitReversed[nbElmts : 2*nbElmts]
 	
 	utils.Parallelize(int(pk.Domain[1].Cardinality), func(start, end int) {
 		var g1 fr.Element
 
 		for i := start; i < end; i++ {
 			_i := bits.Reverse64(uint64(i)) >> nn
-			g1.Mul(&SBig[int(_i)], &eta).Add(&g1, &rBigXBR[_i]).Add(&g1, &gamma)
+			g1.Mul(&pk.EvaluationPermutationBigDomainBitReversed[int(_i + uint64(nbElmts))], &eta).Add(&g1, &rBigXBR[_i]).Add(&g1, &gamma)
 			res[_i].Mul(&res[_i], &g1)
 		}
 	})
-	SBig = pk.EvaluationPermutationBigDomainBitReversed[2*nbElmts : 3*nbElmts]
 	utils.Parallelize(int(pk.Domain[1].Cardinality), func(start, end int) {
 		var g2 fr.Element
 
 		for i := start; i < end; i++ {
 			_i := bits.Reverse64(uint64(i)) >> nn
-			g2.Mul(&SBig[int(_i)], &eta).Add(&g2, &oBigXBR[_i]).Add(&g2, &gamma)
+			g2.Mul(&pk.EvaluationPermutationBigDomainBitReversed[int(_i + 2 * uint64(nbElmts))], &eta).Add(&g2, &oBigXBR[_i]).Add(&g2, &gamma)
 			res[_i].Mul(&res[_i], &g2)
 		}
 	})
-	SBig = nil
-	
-	
-
-
 
 	utils.Parallelize(int(pk.Domain[1].Cardinality), func(start, end int) {
 
@@ -1055,9 +1059,7 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 			evaluationIDBigDomain.Mul(&evaluationIDBigDomain, &pk.Domain[1].Generator)
 		}
 	})
-	
-	
-
+/*
 	hasher := sha256.New()
 	for _, e := range res {
 		bytes := e.Bytes()
@@ -1065,6 +1067,7 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 	}
 	hash := hasher.Sum(nil)
 	fmt.Println("hash of res", hex.EncodeToString(hash))
+*/
 	pk.EvaluationPermutationBigDomainBitReversed = nil
 	return res
 }
@@ -1127,34 +1130,34 @@ func computeCanonicalAndBigFromSmallY(smallEvals [][]fr.Element, smallDomain *ff
 	polys := make([][]fr.Element, num)
 	bigEvals := make([][]fr.Element, num)
 
-//	chPolysDone := make([]chan bool, num)
-//	chBigEvalsDone := make([]chan bool, num)
-//	for i := 0; i < num; i++ {
-//		chPolysDone[i] = make(chan bool, 1)
-//		chBigEvalsDone[i] = make(chan bool, 1)
-//	}
+	chPolysDone := make([]chan bool, num)
+	chBigEvalsDone := make([]chan bool, num)
+	for i := 0; i < num; i++ {
+		chPolysDone[i] = make(chan bool, 1)
+		chBigEvalsDone[i] = make(chan bool, 1)
+	}
 
 	// create and spawn nums goroutines
 	for i := 0; i < num; i++ {
-//		go func(index int, finished chan bool) {
+		go func(index int, finished chan bool) {
 			polys[i] = make([]fr.Element, smallDomain.Cardinality)
 			copy(polys[i], smallEvals[i])
 			smallDomain.FFTInverse(polys[i], fft.DIF)
 			fft.BitReverse(polys[i])
-//			close(finished)
-//		}(i, chPolysDone[i])
+			close(finished)
+		}(i, chPolysDone[i])
 
-//		go func(index int, finished chan bool) {
-//			<-chPolysDone[index]
+		go func(index int, finished chan bool) {
+			<-chPolysDone[index]
 			bigEvals[i] = evaluateBigBitReversed(polys[i], bigDomain)
-//			close(finished)
-//		}(i, chBigEvalsDone[i])
+			close(finished)
+		}(i, chBigEvalsDone[i])
 	}
 
 	// wait for all goroutines to finish
-//	for i := 0; i < num; i++ {
-//		<-chBigEvalsDone[i]
-//	}
+	for i := 0; i < num; i++ {
+		<-chBigEvalsDone[i]
+	}
 
 	return polys, bigEvals
 }
