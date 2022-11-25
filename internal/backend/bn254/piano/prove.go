@@ -283,7 +283,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	<- chEvalBL
 	<- chEvalBR
 	<- chEvalBO
-	
+
 	var gateConstraintBigXBitReversed, permConstraintBigXBitReversed []fr.Element
 
 		// compute Qk in canonical basis, completed with the public inputs
@@ -1140,16 +1140,16 @@ func computeCanonicalAndBigFromSmallY(smallEvals [][]fr.Element, smallDomain *ff
 	// create and spawn nums goroutines
 	for i := 0; i < num; i++ {
 		go func(index int, finished chan bool) {
-			polys[i] = make([]fr.Element, smallDomain.Cardinality)
-			copy(polys[i], smallEvals[i])
-			smallDomain.FFTInverse(polys[i], fft.DIF)
-			fft.BitReverse(polys[i])
+			polys[index] = make([]fr.Element, smallDomain.Cardinality)
+			copy(polys[index], smallEvals[index])
+			smallDomain.FFTInverse(polys[index], fft.DIF)
+			fft.BitReverse(polys[index])
 			close(finished)
 		}(i, chPolysDone[i])
 
 		go func(index int, finished chan bool) {
 			<-chPolysDone[index]
-			bigEvals[i] = evaluateBigBitReversed(polys[i], bigDomain)
+			bigEvals[index] = evaluateBigBitReversed(polys[index], bigDomain)
 			close(finished)
 		}(i, chBigEvalsDone[i])
 	}

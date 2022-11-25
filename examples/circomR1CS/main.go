@@ -6,7 +6,6 @@ import (
 	"log"
 	_ "net/http/pprof"
 	"os"
-	"runtime"
 	"strconv"
 
 	"github.com/consensys/gnark-crypto/ecc"
@@ -49,7 +48,6 @@ func parseConfig(jsonFile string) {
 }
 
 func main() {
-	runtime.GOMAXPROCS(8)
 	dir, _ := os.Getwd()
 	fmt.Println("working directory: ", dir)
 
