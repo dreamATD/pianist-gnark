@@ -981,8 +981,12 @@ func evaluateGateConstraintBigYBitReversed(lBigYBR, rBigYBR, oBigYBR, qlBigYBR, 
 // z(mu*X) * (l(X)+eta*s1(X)+gamma) * (r(X))+eta*s2(X)+gamma) * (o(X))+eta*s3(X)+gamma)
 // - z(X) * (l(X)+eta*X+gamma) * (r(X)+eta*u*X+gamma) * (o(X)+eta*(u**2)*X+gamma)
 // on the big domain (coset).
+
 func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBigXBR, zBigXBR []fr.Element, eta, gamma fr.Element) []fr.Element {
 	nbElmts := int(pk.Domain[1].Cardinality)
+
+
+	ccomputePermutationPolynomials(pk)
 
 	// computes
 	res := make([]fr.Element, pk.Domain[1].Cardinality)
@@ -996,10 +1000,9 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 	cosetShift.Set(&pk.Vk.CosetShift)
 	cosetShiftSquare.Square(&pk.Vk.CosetShift)
 
-	SBig, err := ReadFrArray(pk.ReadPtr)
-	if err != nil {
-		panic(err)
-	}
+	//SBig, err := ReadFrArray(pk.ReadPtr)
+	SBig := pk.EvaluationPermutationBigDomainBitReversed[0 : nbElmts]
+	
 	utils.Parallelize(int(pk.Domain[1].Cardinality), func(start, end int) {
 
 		var g0 fr.Element
@@ -1009,10 +1012,7 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 			res[_i].Set(&g0)
 		}
 	})
-	SBig = nil
-	runtime.GC()
-	debug.FreeOSMemory()
-	SBig, _ = ReadFrArray(pk.ReadPtr)
+	SBig = pk.EvaluationPermutationBigDomainBitReversed[nbElmts : 2*nbElmts]
 	
 	if mpi.SelfRank == 0 {
 		f, _ := os.Create("memPhasePeak.prof")
@@ -1031,10 +1031,7 @@ func evaluatePermConstraintBigXBitReversed(pk *ProvingKey, lBigXBR, rBigXBR, oBi
 			res[_i].Mul(&res[_i], &g1)
 		}
 	})
-	SBig = nil
-	runtime.GC()
-	debug.FreeOSMemory()
-	SBig, _ = ReadFrArray(pk.ReadPtr)
+	SBig = pk.EvaluationPermutationBigDomainBitReversed[2*nbElmts : 3*nbElmts]
 	utils.Parallelize(int(pk.Domain[1].Cardinality), func(start, end int) {
 		var g2 fr.Element
 
