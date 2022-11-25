@@ -29,6 +29,8 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/fft"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
 	"github.com/consensys/gnark/internal/backend/bn254/cs"
+	"github.com/consensys/gnark/internal/utils"
+	"github.com/rs/zerolog/log"
 	"github.com/sunblaze-ucb/simpleMPI/mpi"
 
 	dkzgg "github.com/consensys/gnark-crypto/dkzg"
@@ -390,11 +392,13 @@ func ccomputePermutationPolynomials(pk *ProvingKey) {
 	pk.S1Canonical = make([]fr.Element, nbElmts)
 	pk.S2Canonical = make([]fr.Element, nbElmts)
 	pk.S3Canonical = make([]fr.Element, nbElmts)
-	for i := 0; i < nbElmts; i++ {
+	utils.Parallelize(nbElmts, func(start, end int) {
+	for i := start; i < end; i++ {
 		pk.S1Canonical[i].Set(&evaluationIDSmallDomain[pk.Permutation[i]])
 		pk.S2Canonical[i].Set(&evaluationIDSmallDomain[pk.Permutation[nbElmts+i]])
 		pk.S3Canonical[i].Set(&evaluationIDSmallDomain[pk.Permutation[2*nbElmts+i]])
 	}
+	})
 
 	// Canonical form of S1, S2, S3
 	pk.Domain[0].FFTInverse(pk.S1Canonical, fft.DIF)
@@ -406,9 +410,11 @@ func ccomputePermutationPolynomials(pk *ProvingKey) {
 
 	// evaluation of permutation on the big domain
 	pk.EvaluationPermutationBigDomainBitReversed = make([]fr.Element, 3*pk.Domain[1].Cardinality)
+	log.Debug().Msg("copy start")
 	copy(pk.EvaluationPermutationBigDomainBitReversed, pk.S1Canonical)
 	copy(pk.EvaluationPermutationBigDomainBitReversed[pk.Domain[1].Cardinality:], pk.S2Canonical)
 	copy(pk.EvaluationPermutationBigDomainBitReversed[2*pk.Domain[1].Cardinality:], pk.S3Canonical)
+	log.Debug().Msg("copy end")
 	pk.Domain[1].FFT(pk.EvaluationPermutationBigDomainBitReversed[:pk.Domain[1].Cardinality], fft.DIF, true)
 	pk.Domain[1].FFT(pk.EvaluationPermutationBigDomainBitReversed[pk.Domain[1].Cardinality:2*pk.Domain[1].Cardinality], fft.DIF, true)
 	pk.Domain[1].FFT(pk.EvaluationPermutationBigDomainBitReversed[2*pk.Domain[1].Cardinality:], fft.DIF, true)
@@ -419,16 +425,40 @@ func ccomputePermutationPolynomials(pk *ProvingKey) {
 func getIDSmallDomain(domain *fft.Domain) []fr.Element {
 	fmt.Println("domain.Cardinality", domain.Cardinality)
 	res := make([]fr.Element, 3*domain.Cardinality)
+	tmp0 := make([]fr.Element, domain.Cardinality)
+	tmp1 := make([]fr.Element, domain.Cardinality)
 
 	res[0].SetOne()
 	res[domain.Cardinality].Set(&domain.FrMultiplicativeGen)
 	res[2*domain.Cardinality].Square(&domain.FrMultiplicativeGen)
+	tmp0[0].SetOne()
+	for i := 1; i < int(domain.Cardinality); i = i * 2 {
+		utils.Parallelize(i, func(start, end int) {
+		for j := start; j < end; j++ {
+			tmp1[2 * j + 1].Mul(&tmp0[j], &tmp0[j])
+			tmp1[2 * j].Set(&tmp1[2 * j + 1])
+			tmp1[2 * j + 1].Mul(&tmp1[2 * j + 1], &domain.Generator)
+		}
+		})
+		tmp0, tmp1 = tmp1, tmp0
+	}
 
+	utils.Parallelize(int(domain.Cardinality), func(start, end int) {
+		for i := uint64(start); i < uint64(end); i++ {
+			res[i].Set(&tmp0[i])
+			res[domain.Cardinality+i].Set(&tmp0[i])
+			res[domain.Cardinality+i].Mul(&res[domain.Cardinality+i], &domain.FrMultiplicativeGen)
+			res[2*domain.Cardinality+i].Set(&res[domain.Cardinality+i])
+		}
+	})
+
+	/*
 	for i := uint64(1); i < domain.Cardinality; i++ {
 		res[i].Mul(&res[i-1], &domain.Generator)
 		res[domain.Cardinality+i].Mul(&res[domain.Cardinality+i-1], &domain.Generator)
 		res[2*domain.Cardinality+i].Mul(&res[2*domain.Cardinality+i-1], &domain.Generator)
 	}
+	*/
 
 	return res
 }

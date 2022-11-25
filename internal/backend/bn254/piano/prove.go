@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/bits"
-	"os"
+	//"os"
 	"runtime"
 	"sync"
 	"time"
@@ -82,7 +82,7 @@ func bToMb(b uint64) uint64 {
     return b / 1024 / 1024
 }
 func PrintMemUsage() {
-
+/*
 	var m runtime.MemStats
 	
 	runtime.ReadMemStats(&m)
@@ -93,6 +93,7 @@ func PrintMemUsage() {
 	fmt.Printf("\tReleased = %v MiB", bToMb(m.HeapReleased))
 	fmt.Printf("\tNumGC = %v", m.NumGC)
 	fmt.Printf("\t GODEBUG = %s\n", os.Getenv("GODEBUG"))
+	*/
 }
 
 func postSetup(spr *cs.SparseR1CS, pk *ProvingKey, vk *VerifyingKey, publicWitness []fr.Element) error {
@@ -104,10 +105,12 @@ func postSetup(spr *cs.SparseR1CS, pk *ProvingKey, vk *VerifyingKey, publicWitne
 		pk.CQk[i].Set(&publicWitness[i])
 		pk.LQk[i].Set(&publicWitness[i])
 	}
-	for i := 0; i < nbConstraints; i++ {
-		pk.CQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
-		pk.LQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
-	}
+	utils.Parallelize(nbConstraints, func(start, end int) {
+		for i := start; i < end; i++ {
+			pk.CQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
+			pk.LQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
+		}
+	})
 	pk.Domain[0].FFTInverse(pk.CQk, fft.DIF)
 	fft.BitReverse(pk.CQk)
 
@@ -669,7 +672,7 @@ func evalPolynomialsAtPoint(polys [][]fr.Element, point fr.Element) []fr.Element
 }
 
 func commitToLRO(bcl, bcr, bco []fr.Element, proof *Proof, srs dkzg.SRS) error {
-	n := runtime.NumCPU() / 2
+	n := runtime.NumCPU()
 	var err0, err1, err2 error
 	proof.LRO[0], err0 = dkzg.Commit(bcl, srs, n)
 	if err0 != nil {
@@ -687,7 +690,7 @@ func commitToLRO(bcl, bcr, bco []fr.Element, proof *Proof, srs dkzg.SRS) error {
 }
 
 func commitToQuotientX(h1, h2, h3 []fr.Element, proof *Proof, srs dkzg.SRS) error {
-	n := runtime.NumCPU() / 2
+	n := runtime.NumCPU()
 	var err0, err1, err2 error
 	proof.Hx[0], err0 = dkzg.Commit(h1, srs, n)
 	if err0 != nil {
@@ -704,7 +707,7 @@ func commitToQuotientX(h1, h2, h3 []fr.Element, proof *Proof, srs dkzg.SRS) erro
 }
 
 func commitToQuotientOnY(h1, h2, h3 []fr.Element, proof *Proof, srs *kzg.SRS) error {
-	n := runtime.NumCPU() / 2
+	n := runtime.NumCPU()
 	var err0, err1, err2 error
 	proof.Hy[0], err0 = kzg.Commit(h1, srs, n)
 	proof.Hy[1], err1 = kzg.Commit(h2, srs, n)
@@ -797,11 +800,13 @@ func evaluateLROSmallDomainX(spr *cs.SparseR1CS, pk *ProvingKey, solution []fr.E
 		o[i] = s0
 	}
 	offset := spr.NbPublicVariables
-	for i := 0; i < len(spr.Constraints); i++ { // constraints
-		l[offset+i] = solution[spr.Constraints[i].L.WireID()]
-		r[offset+i] = solution[spr.Constraints[i].R.WireID()]
-		o[offset+i] = solution[spr.Constraints[i].O.WireID()]
-	}
+	utils.Parallelize(len(spr.Constraints), func(start, end int) {
+		for i := start; i < end; i++ { // constraints
+			l[offset+i] = solution[spr.Constraints[i].L.WireID()]
+			r[offset+i] = solution[spr.Constraints[i].R.WireID()]
+			o[offset+i] = solution[spr.Constraints[i].O.WireID()]
+		}
+	})
 	offset += len(spr.Constraints)
 
 	for i := 0; i < s-offset; i++ { // offset to reach 2**n constraints (where the id of l,r,o is 0, so we assign solution[0])
@@ -1201,9 +1206,11 @@ func computeQuotientCanonicalX(pk *ProvingKey, gateConstraintBigXBitReversed, pe
 
 
 	permFirstConstraintBigXBitReversed := make([]fr.Element, pk.Domain[1].Cardinality)
-	for i := 0; i < int(pk.Domain[0].Cardinality); i++ {
-		permFirstConstraintBigXBitReversed[i].Set(&pk.Domain[0].CardinalityInv)
-	}
+	utils.Parallelize(int(pk.Domain[0].Cardinality), func(start, end int) {
+		for i := start; i < end; i++ {
+			permFirstConstraintBigXBitReversed[i].Set(&pk.Domain[0].CardinalityInv)
+		}
+	})
 	pk.Domain[1].FFT(permFirstConstraintBigXBitReversed, fft.DIF, true)
 
 	nn := uint64(64 - bits.TrailingZeros64(pk.Domain[1].Cardinality))
