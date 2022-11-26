@@ -134,10 +134,6 @@ func ReadInt64Array(r io.Reader) ([]int64, error) {
 func (pk *ProvingKey) WriteTo(w io.Writer) (n int64, err error) {
 	//Will not write pk.Vk
 
-	// Write Domain
-	pk.Domain[0].WriteTo(w)
-	pk.Domain[1].WriteTo(w)
-
 	//Write Permutation
 	n, err = WriteInt64Array(w, pk.Permutation)
 	if err != nil {
@@ -179,9 +175,6 @@ func (pk *ProvingKey) WriteTo(w io.Writer) (n int64, err error) {
 func (pk *ProvingKey) ReadFrom(r io.Reader) (int64, error) {
 	var err error
 
-	//Read Domain
-	pk.Domain[0].ReadFrom(r)
-	pk.Domain[1].ReadFrom(r)
 	//Read Permutation
 	pk.Permutation, err = ReadInt64Array(r)
 	if err != nil {

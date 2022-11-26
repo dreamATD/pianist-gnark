@@ -127,18 +127,28 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 
 	var pk ProvingKey
 	var vk VerifyingKey
+	
 
 	// The verifying key shares data with the proving key
 	pk.Vk = &vk
 
 	nbConstraints := len(spr.Constraints)
+	sizeSystem := uint64(nbConstraints + spr.NbPublicVariables) // spr.NbPublicVariables is for the placeholder constraints
+	
+	// fft domains
+	pk.Domain[0] = *fft.NewDomain(sizeSystem)
+	pk.Vk.CosetShift.Set(&pk.Domain[0].FrMultiplicativeGen)
+	
+	// h, the quotient polynomial is of degree 3(n+1)+2, so it's in a 3(n+2) dim vector space,
+	// the domain is the next power of 2 superior to 3(n+2). 4*domainNum is enough in all cases
+	// except when n<6.
+	if sizeSystem < 6 {
+		pk.Domain[1] = *fft.NewDomain(8 * sizeSystem)
+	} else {
+		pk.Domain[1] = *fft.NewDomain(4 * sizeSystem)
+	}
 
 	if publicWitness == nil {
-		// fft domains
-		sizeSystem := uint64(nbConstraints + spr.NbPublicVariables) // spr.NbPublicVariables is for the placeholder constraints
-		pk.Domain[0] = *fft.NewDomain(sizeSystem)
-		pk.Vk.CosetShift.Set(&pk.Domain[0].FrMultiplicativeGen)
-
 		var t, s *big.Int
 		var err error
 		if mpi.SelfRank == 0 {
@@ -207,15 +217,6 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 				return nil, nil, err
 			}
 			s = new(big.Int).SetBytes(sbytes)
-		}
-
-		// h, the quotient polynomial is of degree 3(n+1)+2, so it's in a 3(n+2) dim vector space,
-		// the domain is the next power of 2 superior to 3(n+2). 4*domainNum is enough in all cases
-		// except when n<6.
-		if sizeSystem < 6 {
-			pk.Domain[1] = *fft.NewDomain(8 * sizeSystem)
-		} else {
-			pk.Domain[1] = *fft.NewDomain(4 * sizeSystem)
 		}
 
 		vk.Size = pk.Domain[0].Cardinality
