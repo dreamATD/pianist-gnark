@@ -132,18 +132,18 @@ func ReadInt64Array(r io.Reader) ([]int64, error) {
 	tmpBuf := make([]byte, 256*1024*1024)
 	if size*8 > uint64(len(tmpBuf)) {
 		bytesRemain := size * 8
-		bytesRead := 0
-		for bytesRead < int(8*size) {
-			if bytesRemain > uint64(len(tmpBuf)) {
+		bytesRead := uint64(0)
+		for bytesRead < (8 * size) {
+			if bytesRemain < uint64(len(tmpBuf)) {
 				tmpBuf = make([]byte, bytesRemain)
 			}
 			n, err := r.Read(tmpBuf)
 			if err != nil {
 				panic(err)
 			}
-			bytesRead += n
+			bytesRead += uint64(n)
 			bytesRemain -= uint64(n)
-			copy(buf[bytesRead-n:bytesRead], tmpBuf[:n])
+			copy(buf[bytesRead-uint64(n):bytesRead], tmpBuf[:n])
 		}
 	} else {
 		_, err = r.Read(buf)
