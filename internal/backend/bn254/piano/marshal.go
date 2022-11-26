@@ -100,14 +100,23 @@ func WriteInt64Array(w io.Writer, array []int64) (int64, error) {
 	sizeBuf := make([]byte, 8)
 	binary.LittleEndian.PutUint64(sizeBuf, size)
 	n, err := w.Write(sizeBuf)
+	fmt.Println("write size", size)
 	if err != nil {
-		return int64(n), err
+		panic(err)
 	}
 	buf := make([]byte, 8*size)
 	for i := uint64(0); i < size; i++ {
 		binary.LittleEndian.PutUint64(buf[i*8:(i+1)*8], uint64(array[i]))
 	}
-	n, err = w.Write(buf)
+	bytesWritten := 0
+	for len(buf) > 0 {
+		n, err = w.Write(buf)
+		if err != nil {
+			panic(err)
+		}
+		bytesWritten += n
+		buf = buf[n:]
+	}
 	return int64(n), err
 }
 
@@ -118,10 +127,29 @@ func ReadInt64Array(r io.Reader) ([]int64, error) {
 		return nil, err
 	}
 	size := binary.LittleEndian.Uint64(sizeBuf)
+	fmt.Println("read size", size)
 	buf := make([]byte, 8*size)
-	_, err = r.Read(buf)
+	tmpBuf := make([]byte, 256*1024*1024)
+	if size*8 > uint64(len(tmpBuf)) {
+		bytesRemain := size * 8
+		bytesRead := 0
+		for bytesRead < int(8*size) {
+			if bytesRemain > uint64(len(tmpBuf)) {
+				tmpBuf = make([]byte, bytesRemain)
+			}
+			n, err := r.Read(tmpBuf)
+			if err != nil {
+				panic(err)
+			}
+			bytesRead += n
+			bytesRemain -= uint64(n)
+			copy(buf[bytesRead-n:bytesRead], tmpBuf[:n])
+		}
+	} else {
+		_, err = r.Read(buf)
+	}
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 	array := make([]int64, size)
 	for i := uint64(0); i < size; i++ {
