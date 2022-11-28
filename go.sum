@@ -31,8 +31,8 @@ github.com/stretchr/objx v0.4.0/go.mod h1:YvHI0jy2hoMjB+UWwv71VJQ9isScKT/TqJzVSS
 github.com/stretchr/testify v1.7.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.8.0 h1:pSgiaMZlXftHpm5L7V1+rVB+AZJydKsMxsQBIJw4PKk=
 github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
-github.com/sunblaze-ucb/simpleMPI v0.0.0-20221128023634-e85fe3bac009 h1:M0fqGwjjD3fhvqHVs4wq1zE18aHQCO8I+HN65LYjH90=
-github.com/sunblaze-ucb/simpleMPI v0.0.0-20221128023634-e85fe3bac009/go.mod h1:m44SYvzkpmvNnpD7brwIsngBIhWzZTaRHtTsID+5CrM=
+github.com/sunblaze-ucb/simpleMPI v0.0.0-20221128052647-86f0d57a2762 h1:GAPTdEDNgsLXExDlqf2d/uMjrAOuk/sfLsflj0g3xZ4=
+github.com/sunblaze-ucb/simpleMPI v0.0.0-20221128052647-86f0d57a2762/go.mod h1:m44SYvzkpmvNnpD7brwIsngBIhWzZTaRHtTsID+5CrM=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
 github.com/x448/float16 v0.8.4/go.mod h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg=
 github.com/yuin/goldmark v1.4.0/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
