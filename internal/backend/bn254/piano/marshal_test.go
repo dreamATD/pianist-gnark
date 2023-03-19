@@ -53,8 +53,7 @@ func TestProvingKeySerialization(t *testing.T) {
 	pk.Qr = make([]fr.Element, pk.Domain[0].Cardinality)
 	pk.Qm = make([]fr.Element, pk.Domain[0].Cardinality)
 	pk.Qo = make([]fr.Element, pk.Domain[0].Cardinality)
-	pk.CQk = make([]fr.Element, pk.Domain[0].Cardinality)
-	pk.LQk = make([]fr.Element, pk.Domain[0].Cardinality)
+	pk.Qk = make([]fr.Element, pk.Domain[0].Cardinality)
 
 	for i := 0; i < 12; i++ {
 		pk.Ql[i].SetOne().Neg(&pk.Ql[i])
