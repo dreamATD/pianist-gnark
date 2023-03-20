@@ -47,3 +47,5 @@ gnarkd/circuits/**
 
 # compiled sage -> python code
 *.sage.py
+
+**/output
