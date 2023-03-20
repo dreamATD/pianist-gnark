@@ -161,7 +161,9 @@ func main() {
 		proof, err := piano.Prove(ccs, pk, witnessFull)
 		fmt.Println("Verifying proof...")
 		if err != nil {
-			log.Fatal(err)
+			fmt.Printf("Failed to generate correct proof: %v\n", err)
+			fmt.Println("Done")
+			return
 		}
 
 		if mpi.SelfRank == 0 {

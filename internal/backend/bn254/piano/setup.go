@@ -76,13 +76,16 @@ type ProvingKey struct {
 // * Commitments to S1, S2, S3
 type VerifyingKey struct {
 	// Size circuit
-	Size              uint64
-	SizeInv           fr.Element
+	SizeY             uint64
+	SizeX             uint64
+	SizeYInv          fr.Element
+	SizeXInv          fr.Element
 	Generator         fr.Element
 	NbPublicVariables uint64
 
 	// Commitment scheme that is used for an instantiation of PLONK
-	KZGSRS *dkzg.SRS
+	DKZGSRS *dkzg.SRS
+	KZGSRS *kzg.SRS
 
 	// cosetShift generator of the coset on the small domain
 	CosetShift fr.Element
@@ -185,6 +188,7 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 		}
 		s = new(big.Int).SetBytes(sbytes)
 	}
+	vk.KZGSRS = globalSRS
 
 	// h, the quotient polynomial is of degree 3(n+1)+2, so it's in a 3(n+2) dim vector space,
 	// the domain is the next power of 2 superior to 3(n+2). 4*domainNum is enough in all cases
@@ -195,12 +199,14 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 		pk.Domain[1] = *fft.NewDomain(4 * sizeSystem)
 	}
 
-	vk.Size = pk.Domain[0].Cardinality
-	vk.SizeInv.SetUint64(vk.Size).Inverse(&vk.SizeInv)
+	vk.SizeY = globalDomain[0].Cardinality
+	vk.SizeYInv.SetUint64(vk.SizeY).Inverse(&vk.SizeYInv)
+	vk.SizeX = pk.Domain[0].Cardinality
+	vk.SizeXInv.SetUint64(vk.SizeX).Inverse(&vk.SizeXInv)
 	vk.Generator.Set(&pk.Domain[0].Generator)
 	vk.NbPublicVariables = uint64(spr.NbPublicVariables)
 
-	dkzgSRS, err := dkzg.NewSRS(vk.Size+3, []*big.Int{t, s}, &globalDomain[0].Generator)
+	dkzgSRS, err := dkzg.NewSRS(vk.SizeX+3, []*big.Int{t, s}, &globalDomain[0].Generator)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -251,28 +257,28 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 	ccomputePermutationPolynomials(&pk)
 
 	// Commit to the polynomials to set up the verifying key
-	if vk.Ql, err = dkzg.Commit(pk.Ql, vk.KZGSRS); err != nil {
+	if vk.Ql, err = dkzg.Commit(pk.Ql, vk.DKZGSRS); err != nil {
 		return nil, nil, err
 	}
-	if vk.Qr, err = dkzg.Commit(pk.Qr, vk.KZGSRS); err != nil {
+	if vk.Qr, err = dkzg.Commit(pk.Qr, vk.DKZGSRS); err != nil {
 		return nil, nil, err
 	}
-	if vk.Qm, err = dkzg.Commit(pk.Qm, vk.KZGSRS); err != nil {
+	if vk.Qm, err = dkzg.Commit(pk.Qm, vk.DKZGSRS); err != nil {
 		return nil, nil, err
 	}
-	if vk.Qo, err = dkzg.Commit(pk.Qo, vk.KZGSRS); err != nil {
+	if vk.Qo, err = dkzg.Commit(pk.Qo, vk.DKZGSRS); err != nil {
 		return nil, nil, err
 	}
-	if vk.Qk, err = dkzg.Commit(pk.Qk, vk.KZGSRS); err != nil {
+	if vk.Qk, err = dkzg.Commit(pk.Qk, vk.DKZGSRS); err != nil {
 		return nil, nil, err
 	}
-	if vk.S[0], err = dkzg.Commit(pk.S1Canonical, vk.KZGSRS); err != nil {
+	if vk.S[0], err = dkzg.Commit(pk.S1Canonical, vk.DKZGSRS); err != nil {
 		return nil, nil, err
 	}
-	if vk.S[1], err = dkzg.Commit(pk.S2Canonical, vk.KZGSRS); err != nil {
+	if vk.S[1], err = dkzg.Commit(pk.S2Canonical, vk.DKZGSRS); err != nil {
 		return nil, nil, err
 	}
-	if vk.S[2], err = dkzg.Commit(pk.S3Canonical, vk.KZGSRS); err != nil {
+	if vk.S[2], err = dkzg.Commit(pk.S3Canonical, vk.DKZGSRS); err != nil {
 		return nil, nil, err
 	}
 
@@ -411,10 +417,10 @@ func (pk *ProvingKey) InitKZG(srs dkzgg.SRS) error {
 func (vk *VerifyingKey) InitKZG(srs dkzgg.SRS) error {
 	_srs := srs.(*dkzg.SRS)
 
-	if len(_srs.G1) < int(vk.Size) {
+	if len(_srs.G1) < int(vk.SizeX) {
 		return errors.New("dkzg srs is too small")
 	}
-	vk.KZGSRS = _srs
+	vk.DKZGSRS = _srs
 
 	return nil
 }
