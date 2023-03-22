@@ -66,13 +66,13 @@ type Proof struct {
 	// Z(Y, X) on X = alpha
 	PartialBatchedProof dkzg.BatchOpeningProof
 
-	// Opening partially proof of Z(Y, X) on X = mu*alpha
-	PartialZShiftedOpening dkzg.OpeningProof
+	// Opening partially proof of Z(Y, X) on X = omegaX*alpha
+	PartialZShiftedProof dkzg.OpeningProof
 
-	// Batch opening proof of L(Y, alpha), R(Y, alpha), O(Y, alpha),
+	// Batch opening proof of FoldedHx(Y, alpha), L(Y, alpha), R(Y, alpha), O(Y, alpha),
 	// Ql(Y, alpha), Qr(Y, alpha), Qm(Y, alpha), Qo(Y, alpha), Qk(Y, alpha),
 	// S1(Y, alpha), S2(Y, alpha), S3(Y, alpha), Z(Y, alpha), z(Y, mu*alpha),
-	// linearizedIdentities(Y) on Y = beta
+	// FoldedHy(Y) on Y = beta
 	BatchedProof kzg.BatchOpeningProof
 }
 
@@ -126,7 +126,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	}
 
 	// compute kzg commitments of bcL, bcR and bcO
-	if err := commitToLRO(lCanonicalX, rCanonicalX, oCanonicalX, proof, pk.Vk.KZGSRS); err != nil {
+	if err := commitToLRO(lCanonicalX, rCanonicalX, oCanonicalX, proof, pk.Vk.DKZGSRS); err != nil {
 		return nil, err
 	}
 
@@ -165,7 +165,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	// this may add additional arithmetic operations, but with smaller tasks
 	// we ensure that this commitment is well parallelized, without having a
 	// "unbalanced task" making the rest of the code wait too long
-	if proof.Z, err = dkzg.Commit(zCanonicalX, pk.Vk.KZGSRS, runtime.NumCPU()*2); err != nil {
+	if proof.Z, err = dkzg.Commit(zCanonicalX, pk.Vk.DKZGSRS, runtime.NumCPU()*2); err != nil {
 		return nil, err
 	}
 
@@ -180,7 +180,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	// print vector of hx1, hx2, hx3
 
 	// compute kzg commitments of Hx1, Hx2 and Hx3
-	if err := commitToQuotientX(hx1, hx2, hx3, proof, pk.Vk.KZGSRS); err != nil {
+	if err := commitToQuotientX(hx1, hx2, hx3, proof, pk.Vk.DKZGSRS); err != nil {
 		return nil, err
 	}
 
@@ -194,10 +194,10 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	var alphaShifted fr.Element
 	alphaShifted.Mul(&alpha, &pk.Vk.Generator)
 	var zShiftedAlpha []fr.Element
-	proof.PartialZShiftedOpening, zShiftedAlpha, err = dkzg.Open(
+	proof.PartialZShiftedProof, zShiftedAlpha, err = dkzg.Open(
 		zCanonicalX,
 		alphaShifted,
-		pk.Vk.KZGSRS,
+		pk.Vk.DKZGSRS,
 	)
 	if err != nil {
 		return nil, err
@@ -210,19 +210,19 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	alphaPowerN.Exp(alpha, &bSize)
 	alphaPowerN.ToBigIntRegular(&bAlphaPowerN)
 	foldedHxDigest := proof.Hx[2]
-	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerN) // alpha*Comm(Hx3)
-	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[1])                   // alpha*Comm(Hx3) + Comm(Hx2)
-	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerN) // (alpha**(N))*Comm(Hx3) + alpha*Comm(Hx2)
-	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[0])                   // (alpha**(2(N)))*Comm(Hx3) + (alpha**(N))*Comm(Hx2) + Comm(Hx1)
+	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerN)
+	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[1])
+	foldedHxDigest.ScalarMultiplication(&foldedHxDigest, &bAlphaPowerN)
+	foldedHxDigest.Add(&foldedHxDigest, &proof.Hx[0])
 
 	// foldedHx = Hx1 + (alpha**(N))*Hx2 + (alpha**(2(N)))*Hx3
 	foldedHx := hx3
 	utils.Parallelize(len(foldedHx), func(start, end int) {
 		for i := start; i < end; i++ {
-			foldedHx[i].Mul(&foldedHx[i], &alphaPowerN) // (alpha**(N))*Hx3
-			foldedHx[i].Add(&foldedHx[i], &hx2[i])      // (alpha**(N))*Hx3 + Hx2
-			foldedHx[i].Mul(&foldedHx[i], &alphaPowerN) // (alpha**(2(N)))*Hx3 + (alpha**(N))*Hx2
-			foldedHx[i].Add(&foldedHx[i], &hx1[i])      // (alpha**(2(N)))*Hx3 + (alpha**(N))*Hx2 + Hx1
+			foldedHx[i].Mul(&foldedHx[i], &alphaPowerN)
+			foldedHx[i].Add(&foldedHx[i], &hx2[i])
+			foldedHx[i].Mul(&foldedHx[i], &alphaPowerN)
+			foldedHx[i].Add(&foldedHx[i], &hx1[i])
 		}
 	})
 
@@ -264,7 +264,7 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		dkzgDigests,
 		alpha,
 		hFunc,
-		pk.Vk.KZGSRS,
+		pk.Vk.DKZGSRS,
 	)
 
 	if err != nil {
@@ -281,17 +281,17 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	}
 
 	// DBG check whether constraints are satisfied
-	// if err := checkConstraintX(
-	// 	pk,
-	// 	evalsXOnAlpha,
-	// 	zShiftedAlpha,
-	// 	gamma,
-	// 	eta,
-	// 	lambda,
-	// 	alpha,
-	// ); err != nil {
-	// 	return nil, err
-	// }
+	if err := checkConstraintX(
+		pk,
+		evalsXOnAlpha,
+		zShiftedAlpha,
+		gamma,
+		eta,
+		lambda,
+		alpha,
+	); err != nil {
+		return nil, err
+	}
 
 	polysCanonicalY := append(evalsXOnAlpha, zShiftedAlpha)
 	for i := 0; i < len(polysCanonicalY); i++ {
@@ -333,18 +333,18 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	var betaPowerM fr.Element
 	betaPowerM.Exp(beta, &bSize)
 	betaPowerM.ToBigIntRegular(&bBetaPowerM)
-	foldedHyDigest := proof.Hy[2]                                      // Hy3
-	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM) // (beta**M)*Hy3
-	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[1])                  // (beta**M)*Hy3 + Hy2
-	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM) // (beta**(2M))*Hy3 + (beta**M)*Hy2
-	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[0])                  // (beta**(2M))*Hy3 + (beta**M)*Hy2 + Hy1
+	foldedHyDigest := proof.Hy[2]
+	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM)
+	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[1])
+	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM)
+	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[0])
 	foldedHy := hyCanonical3
 	utils.Parallelize(len(foldedHy), func(start, end int) {
 		for i := start; i < end; i++ {
-			foldedHy[i].Mul(&foldedHy[i], &betaPowerM)      // (beta**M)*Hy3
-			foldedHy[i].Add(&foldedHy[i], &hyCanonical2[i]) // (beta**M)*Hy3 + Hy2
-			foldedHy[i].Mul(&foldedHy[i], &betaPowerM)      // (beta**(2M))*Hy3 + (beta**M)*Hy2
-			foldedHy[i].Add(&foldedHy[i], &hyCanonical1[i]) // (beta**(2M))*Hy3 + (beta**M)*Hy2 + Hy1
+			foldedHy[i].Mul(&foldedHy[i], &betaPowerM)
+			foldedHy[i].Add(&foldedHy[i], &hyCanonical2[i])
+			foldedHy[i].Mul(&foldedHy[i], &betaPowerM)
+			foldedHy[i].Add(&foldedHy[i], &hyCanonical1[i])
 		}
 	})
 
@@ -364,8 +364,8 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 	// }
 
 	var digestsY []curve.G1Affine
-	digestsY = append(digestsY, proof.PartialBatchedProof.ClaimedDigests...) // no hx
-	digestsY = append(digestsY, proof.PartialZShiftedOpening.ClaimedDigest, foldedHyDigest)
+	digestsY = append(digestsY, proof.PartialBatchedProof.ClaimedDigests...)
+	digestsY = append(digestsY, proof.PartialZShiftedProof.ClaimedDigest, foldedHyDigest)
 	proof.BatchedProof, err = kzg.BatchOpenSinglePoint(
 		polysCanonicalY,
 		digestsY,
@@ -377,6 +377,23 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		return nil, err
 	}
 	return proof, nil
+}
+
+// eval evaluates c at p
+func eval(c []fr.Element, p fr.Element) fr.Element {
+	var r fr.Element
+	for i := len(c) - 1; i >= 0; i-- {
+		r.Mul(&r, &p).Add(&r, &c[i])
+	}
+	return r
+}
+
+func evalPolynomialsAtPoint(polys [][]fr.Element, point fr.Element) []fr.Element {
+	res := make([]fr.Element, len(polys))
+	for i := range polys {
+		res[i] = eval(polys[i], point)
+	}
+	return res
 }
 
 func commitToLRO(bcl, bcr, bco []fr.Element, proof *Proof, srs *dkzg.SRS) error {
@@ -612,9 +629,9 @@ func computeQuotientCanonicalX(pk *ProvingKey, lCanonicalX, rCanonicalX, oCanoni
 	// Variables needed in permutation constraint.
 	n := pk.Domain[0].Cardinality
 	nn := uint64(64 - bits.TrailingZeros64(uint64(pk.Domain[0].Cardinality)))
-	var cosetShift, cosetShiftSquare fr.Element
-	cosetShift.Set(&pk.Vk.CosetShift)
-	cosetShiftSquare.Square(&pk.Vk.CosetShift)
+	var cosetShiftEta, cosetShiftSquareEta fr.Element
+	cosetShiftEta.Mul(&pk.Vk.CosetShift, &eta)
+	cosetShiftSquareEta.Mul(&cosetShiftEta, &pk.Vk.CosetShift)
 
 	var one fr.Element
 	one.SetOne()
@@ -661,8 +678,8 @@ func computeQuotientCanonicalX(pk *ProvingKey, lCanonicalX, rCanonicalX, oCanoni
 				
 				// Compute permutation constraints z(mu*X)*g1(X)*g2(X)*g3(X) - z(X)*f1(X)*f2(X)*f3(X)
 				f[0].Mul(&ID, &eta).Add(&f[0], &l[_i]).Add(&f[0], &gamma)
-				f[1].Mul(&ID, &cosetShift).Mul(&f[1], &eta).Add(&f[1], &r[_i]).Add(&f[1], &gamma)
-				f[2].Mul(&ID, &cosetShiftSquare).Mul(&f[2], &eta).Add(&f[2], &o[_i]).Add(&f[2], &gamma)
+				f[1].Mul(&ID, &cosetShiftEta).Add(&f[1], &r[_i]).Add(&f[1], &gamma)
+				f[2].Mul(&ID, &cosetShiftSquareEta).Add(&f[2], &o[_i]).Add(&f[2], &gamma)
 
 				g[0].Mul(&s1[_i], &eta).Add(&g[0], &l[_i]).Add(&g[0], &gamma)
 				g[1].Mul(&s2[_i], &eta).Add(&g[1], &r[_i]).Add(&g[1], &gamma)
@@ -714,7 +731,7 @@ func computeQuotientCanonicalX(pk *ProvingKey, lCanonicalX, rCanonicalX, oCanoni
 // Ql(Y, alpha)L(Y, alpha)+Qr(Y, alpha)R(Y, alpha)+Qm(Y, alpha)L(Y, alpha)R(Y, alpha)+Qo(Y, alpha)O(Y, alpha)+Qk(Y, alpha)
 // + lambda * (Z(Y, mu*alpha)*G1(Y, alpha)*G2(Y, alpha)*G3(Y, alpha)
 //	 - Z(Y, alpha)*F1(Y, alpha)*F2(Y, alpha)*F3(Y, alpha))
-// + lambda**2 * L1(alpha)*(Z(Y, alpha) - 1)
+// + lambda**2 * L0(alpha)*(Z(Y, alpha) - 1)
 // - Hx(Y, alpha)Z(X) = Hy(Y)Z(Y)
 func computeQuotientCanonicalY(pk *ProvingKey, polys [][]fr.Element, eta, gamma, lambda, alpha fr.Element) ([]fr.Element, []fr.Element, []fr.Element) {
 	h := make([]fr.Element, globalDomain[1].Cardinality)
@@ -730,9 +747,10 @@ func computeQuotientCanonicalY(pk *ProvingKey, polys [][]fr.Element, eta, gamma,
 
 	// Variables needed in permutation constraint.
 	n := globalDomain[0].Cardinality
-	var cosetShift, cosetShiftSquare fr.Element
-	cosetShift.Set(&pk.Vk.CosetShift)
-	cosetShiftSquare.Square(&pk.Vk.CosetShift)
+	var alphaEta, cosetShiftAlphaEta, cosetShiftSquareAlphaEta fr.Element
+	alphaEta.Mul(&alpha, &eta)
+	cosetShiftAlphaEta.Mul(&alphaEta, &pk.Vk.CosetShift)
+	cosetShiftSquareAlphaEta.Mul(&cosetShiftAlphaEta, &pk.Vk.CosetShift)
 
 	var one fr.Element
 	one.SetOne()
@@ -776,9 +794,9 @@ func computeQuotientCanonicalY(pk *ProvingKey, polys [][]fr.Element, eta, gamma,
 				h[hStart + _i].Sub(&z[_i], &one).Mul(&h[hStart + _i], &lagrangeAlpha)
 
 				// Compute the permutation constraint  z(Y, u * alpha) * G1(Y, alpha) * G2(Y, alpha) * G3(Y, alpha) - z(Y, alpha) * F1(Y, alpha) * F2(Y, alpha) * F3(Y, alpha)
-				f[0].Mul(&alpha, &eta).Add(&f[0], &l[_i]).Add(&f[0], &gamma)
-				f[1].Mul(&alpha, &cosetShift).Mul(&f[1], &eta).Add(&f[1], &r[_i]).Add(&f[1], &gamma)
-				f[2].Mul(&alpha, &cosetShiftSquare).Mul(&f[2], &eta).Add(&f[2], &o[_i]).Add(&f[2], &gamma)
+				f[0].Add(&alphaEta, &l[_i]).Add(&f[0], &gamma)
+				f[1].Add(&cosetShiftAlphaEta, &r[_i]).Add(&f[1], &gamma)
+				f[2].Add(&cosetShiftSquareAlphaEta, &o[_i]).Add(&f[2], &gamma)
 
 				g[0].Mul(&s1[_i], &eta).Add(&g[0], &l[_i]).Add(&g[0], &gamma)
 				g[1].Mul(&s2[_i], &eta).Add(&g[1], &r[_i]).Add(&g[1], &gamma)
@@ -830,6 +848,16 @@ func computeQuotientCanonicalY(pk *ProvingKey, polys [][]fr.Element, eta, gamma,
 
 // checkConstraintX checks that the constraint is satisfied
 func checkConstraintX(pk *ProvingKey, evalsXOnAlpha [][]fr.Element, zShiftedAlpha []fr.Element, gamma, eta, lambda, alpha fr.Element) error {
+	var l0, one, den fr.Element
+	one.SetOne()
+	l0.Exp(alpha, big.NewInt(int64(pk.Domain[0].Cardinality))).Sub(&l0, &one)
+	den.Sub(&alpha, &one).Inverse(&den)
+	l0.Mul(&l0, &den).Mul(&l0, &pk.Domain[0].CardinalityInv)
+
+	var vanishingX fr.Element
+	vanishingX.Exp(alpha, big.NewInt(int64(pk.Domain[0].Cardinality)))
+	vanishingX.Sub(&vanishingX, &one)
+
 	for k := 0; k < int(mpi.WorldSize); k++ {
 		// unpack vector evalsXOnAlpha on hx, l, r, o, ql, qr, qm, qo, qk, s1, s2, s3, z
 		hx := evalsXOnAlpha[0][k]
@@ -863,39 +891,26 @@ func checkConstraintX(pk *ProvingKey, evalsXOnAlpha [][]fr.Element, zShiftedAlph
 		s3.Mul(&s3, &eta).Add(&s3, &o).Add(&s3, &gamma)
 		s1.Mul(&s1, &s2).Mul(&s1, &s3).Mul(&s1, &zs)
 
-		var ualpha, uualpha fr.Element
-		ualpha.Mul(&alpha, &pk.Vk.CosetShift)
-		uualpha.Mul(&ualpha, &pk.Vk.CosetShift)
+		var alphaEta, ualphaEta, uualphaEta fr.Element
+		alphaEta.Mul(&alpha, &eta)
+		ualphaEta.Mul(&alphaEta, &pk.Vk.CosetShift)
+		uualphaEta.Mul(&ualphaEta, &pk.Vk.CosetShift)
 
 		var secondPart, tmp fr.Element
-		secondPart.Mul(&eta, &alpha).Add(&secondPart, &l).Add(&secondPart, &gamma)
-		tmp.Mul(&eta, &ualpha).Add(&tmp, &r).Add(&tmp, &gamma)
+		secondPart.Add(&alphaEta, &l).Add(&secondPart, &gamma)
+		tmp.Add(&ualphaEta, &r).Add(&tmp, &gamma)
 		secondPart.Mul(&secondPart, &tmp)
-		tmp.Mul(&eta, &uualpha).Add(&tmp, &o).Add(&tmp, &gamma)
+		tmp.Add(&uualphaEta, &o).Add(&tmp, &gamma)
 		secondPart.Mul(&secondPart, &tmp).Mul(&secondPart, &z)
 		secondPart.Sub(&s1, &secondPart)
 
-		// third part L1(alpha)*(Z(Y, alpha) - 1)
-		var thirdPart, one, den fr.Element
-		one.SetOne()
-		z.Sub(&z, &one)
-		nbElmt := int64(pk.Domain[0].Cardinality)
-		thirdPart.Set(&alpha).
-			Exp(thirdPart, big.NewInt(nbElmt)).
-			Sub(&thirdPart, &one)
-		den.Sub(&alpha, &one).
-			Inverse(&den)
-		thirdPart.Mul(&thirdPart, &den).
-			Mul(&thirdPart, &pk.Domain[0].CardinalityInv).
-			Mul(&thirdPart, &z)
+		// third part L0(alpha)*(Z(Y, alpha) - 1)
+		var thirdPart fr.Element
+		thirdPart.Sub(&z, &one).Mul(&thirdPart, &l0)
 
 		// Put it all together
 		var result fr.Element
 		result.Mul(&thirdPart, &lambda).Add(&result, &secondPart).Mul(&result, &lambda).Add(&result, &firstPart)
-
-		var vanishingX fr.Element
-		vanishingX.Exp(alpha, big.NewInt(int64(pk.Domain[0].Cardinality)))
-		vanishingX.Sub(&vanishingX, &one)
 
 		var vH fr.Element
 		vH.Mul(&hx, &vanishingX)

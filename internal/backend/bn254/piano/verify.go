@@ -78,7 +78,7 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	var alphaPowerN, zalpha fr.Element
 	var bExpo big.Int
 	one := fr.One()
-	bExpo.SetUint64(vk.Size)
+	bExpo.SetUint64(vk.SizeX)
 	alphaPowerN.Exp(alpha, &bExpo)
 	zalpha.Sub(&alphaPowerN, &one)
 
@@ -124,13 +124,13 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 		},
 		[]dkzg.OpeningProof{
 			foldedPartialProof,
-			proof.PartialZShiftedOpening,
+			proof.PartialZShiftedProof,
 		},
 		[]fr.Element{
 			alpha,
 			shiftedalpha,
 		},
-		vk.KZGSRS,
+		vk.DKZGSRS,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to batch verify on X = alpha: %v", err)
@@ -156,7 +156,7 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	}
 	// foldedHy = Hy1 + (beta**M)*Hy2 + (beta**(2M))*Hy3
 	var bBetaPowerM, bSize big.Int
-	bSize.SetUint64(globalDomain[0].Cardinality)
+	bSize.SetUint64(vk.SizeY)
 	var betaPowerM fr.Element
 	betaPowerM.Exp(beta, &bSize)
 	betaPowerM.ToBigIntRegular(&bBetaPowerM)
@@ -168,13 +168,13 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 
 	if err := kzg.BatchVerifySinglePoint(
 		append(proof.PartialBatchedProof.ClaimedDigests,
-			proof.PartialZShiftedOpening.ClaimedDigest,
+			proof.PartialZShiftedProof.ClaimedDigest,
 			foldedHyDigest,
 		),
 		&proof.BatchedProof,
 		beta, // not consistent with the prover
 		hFunc,
-		globalSRS,
+		vk.KZGSRS,
 	); err != nil {
 		return err
 	}
@@ -265,7 +265,7 @@ func deriveRandomness(fs *fiatshamir.Transcript, challenge string, notSend bool,
 
 // checkConstraintY checks that the constraint is satisfied
 func checkConstraintY(vk *VerifyingKey, evalsYOnBeta []fr.Element, gamma, eta, lambda, alpha, beta fr.Element) error {
-	// unpack vector evalsXOnAlpha on l, r, o, ql, qr, qm, qo, qk, s1, s2, s3, z, zmu
+	// unpack vector evalsXOnAlpha on l, r, o, ql, qr, qm, qo, qk, s1, s2, s3, z, zs
 	hx := evalsYOnBeta[0]
 	l := evalsYOnBeta[1]
 	r := evalsYOnBeta[2]
@@ -279,7 +279,7 @@ func checkConstraintY(vk *VerifyingKey, evalsYOnBeta []fr.Element, gamma, eta, l
 	s2 := evalsYOnBeta[10]
 	s3 := evalsYOnBeta[11]
 	z := evalsYOnBeta[12]
-	zmu := evalsYOnBeta[13]
+	zs := evalsYOnBeta[13]
 	hy := evalsYOnBeta[14]
 	// first part: individual constraints
 	var firstPart fr.Element
@@ -296,32 +296,33 @@ func checkConstraintY(vk *VerifyingKey, evalsYOnBeta []fr.Element, gamma, eta, l
 	s1.Mul(&s1, &eta).Add(&s1, &l).Add(&s1, &gamma)
 	s2.Mul(&s2, &eta).Add(&s2, &r).Add(&s2, &gamma)
 	s3.Mul(&s3, &eta).Add(&s3, &o).Add(&s3, &gamma)
-	s1.Mul(&s1, &s2).Mul(&s1, &s3).Mul(&s1, &zmu)
+	s1.Mul(&s1, &s2).Mul(&s1, &s3).Mul(&s1, &zs)
 
-	var ualpha, uualpha fr.Element
-	ualpha.Mul(&alpha, &vk.CosetShift)
-	uualpha.Mul(&ualpha, &vk.CosetShift)
+	var alphaEta, ualphaEta, uualphaEta fr.Element
+	alphaEta.Mul(&alpha, &eta)
+	ualphaEta.Mul(&alphaEta, &vk.CosetShift)
+	uualphaEta.Mul(&ualphaEta, &vk.CosetShift)
 
 	var secondPart, tmp fr.Element
-	secondPart.Mul(&eta, &alpha).Add(&secondPart, &l).Add(&secondPart, &gamma)
-	tmp.Mul(&eta, &ualpha).Add(&tmp, &r).Add(&tmp, &gamma)
+	secondPart.Add(&alphaEta, &l).Add(&secondPart, &gamma)
+	tmp.Add(&ualphaEta, &r).Add(&tmp, &gamma)
 	secondPart.Mul(&secondPart, &tmp)
-	tmp.Mul(&eta, &uualpha).Add(&tmp, &o).Add(&tmp, &gamma)
+	tmp.Add(&uualphaEta, &o).Add(&tmp, &gamma)
 	secondPart.Mul(&secondPart, &tmp).Mul(&secondPart, &z)
 	secondPart.Sub(&s1, &secondPart)
 
-	// third part L1(alpha)*(Z(beta, alpha) - 1)
+	// third part L0(alpha)*(Z(beta, alpha) - 1)
 	var thirdPart, one, den fr.Element
 	one.SetOne()
 	z.Sub(&z, &one)
-	nbElmt := int64(vk.Size)
+	nbElmt := int64(vk.SizeX)
 	thirdPart.Set(&alpha).
 		Exp(thirdPart, big.NewInt(nbElmt)).
 		Sub(&thirdPart, &one)
 	den.Sub(&alpha, &one).
 		Inverse(&den)
 	thirdPart.Mul(&thirdPart, &den).
-		Mul(&thirdPart, &vk.SizeInv).
+		Mul(&thirdPart, &vk.SizeXInv).
 		Mul(&thirdPart, &z)
 
 	// Put it all together
@@ -329,7 +330,7 @@ func checkConstraintY(vk *VerifyingKey, evalsYOnBeta []fr.Element, gamma, eta, l
 	result.Mul(&thirdPart, &lambda).Add(&result, &secondPart).Mul(&result, &lambda).Add(&result, &firstPart)
 
 	var vanishingX fr.Element
-	vanishingX.Exp(alpha, big.NewInt(int64(vk.Size)))
+	vanishingX.Exp(alpha, big.NewInt(int64(vk.SizeX)))
 	vanishingX.Sub(&vanishingX, &one)
 
 	// print all elements
@@ -353,7 +354,7 @@ func checkConstraintY(vk *VerifyingKey, evalsYOnBeta []fr.Element, gamma, eta, l
 	result.Sub(&result, &vHx)
 
 	var vanishingY fr.Element
-	vanishingY.Exp(beta, big.NewInt(int64(globalDomain[0].Cardinality)))
+	vanishingY.Exp(beta, big.NewInt(int64(vk.SizeY)))
 	vanishingY.Sub(&vanishingY, &one)
 
 	var vHy fr.Element

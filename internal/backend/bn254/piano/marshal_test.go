@@ -30,8 +30,8 @@ import (
 func TestProvingKeySerialization(t *testing.T) {
 	// create a random vk
 	var vk VerifyingKey
-	vk.Size = 42
-	vk.SizeInv = fr.One()
+	vk.SizeX = 42
+	vk.SizeXInv = fr.One()
 
 	_, _, g1gen, _ := curve.Generators()
 	vk.S[0] = g1gen
@@ -90,8 +90,8 @@ func TestProvingKeySerialization(t *testing.T) {
 func TestVerifyingKeySerialization(t *testing.T) {
 	// create a random vk
 	var vk VerifyingKey
-	vk.Size = 42
-	vk.SizeInv = fr.One()
+	vk.SizeX = 42
+	vk.SizeXInv = fr.One()
 
 	_, _, g1gen, _ := curve.Generators()
 	vk.S[0] = g1gen
