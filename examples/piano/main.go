@@ -84,11 +84,12 @@ func main() {
 		// while public w is a public data known by the verifier.
 		var w Circuit
 		w.X = 12
-		w.E = 2 + mpi.SelfRank
+		w.E = 2
+		//  + mpi.SelfRank
 		tmp := 144
-		for i := 0; i < int(mpi.SelfRank); i++ {
-			tmp *= 12
-		}
+		// for i := 0; i < int(mpi.SelfRank); i++ {
+		// 	tmp *= 12
+		// }
 		w.Y = tmp
 
 		witnessFull, err := frontend.NewWitness(&w, ecc.BN254)
@@ -128,15 +129,16 @@ func main() {
 		// while public w is a public data known by the verifier.
 		var w, pW Circuit
 		w.X = 12
-		w.E = 2 + mpi.SelfRank
+		w.E = 2
+		//  + mpi.SelfRank
 		tmp := 144
-		for i := 0; i < int(mpi.SelfRank); i++ {
-			tmp *= 12
-		}
+		// for i := 0; i < int(mpi.SelfRank); i++ {
+		// 	tmp *= 12
+		// }
 		w.Y = tmp
 
 		pW.X = 12
-		pW.E = 2 + mpi.SelfRank
+		pW.E = 2
 		pW.Y = tmp + 1
 
 		witnessFull, err := frontend.NewWitness(&w, ecc.BN254)
