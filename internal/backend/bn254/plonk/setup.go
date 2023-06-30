@@ -103,11 +103,7 @@ func Setup(spr *cs.SparseR1CS, srs *kzg.SRS) (*ProvingKey, *VerifyingKey, error)
 	// h, the quotient polynomial is of degree 3(n+1)+2, so it's in a 3(n+2) dim vector space,
 	// the domain is the next power of 2 superior to 3(n+2). 4*domainNum is enough in all cases
 	// except when n<6.
-	if sizeSystem < 6 {
-		pk.Domain[1] = *fft.NewDomain(8 * sizeSystem)
-	} else {
-		pk.Domain[1] = *fft.NewDomain(4 * sizeSystem)
-	}
+	pk.Domain[1] = *fft.NewDomain(4 * sizeSystem)
 
 	vk.Size = pk.Domain[0].Cardinality
 	vk.SizeInv.SetUint64(vk.Size).Inverse(&vk.SizeInv)

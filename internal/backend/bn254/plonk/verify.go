@@ -153,15 +153,15 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	}
 
 	// compute the folded commitment to H: Comm(h₁) + ζᵐ⁺²*Comm(h₂) + ζ²⁽ᵐ⁺²⁾*Comm(h₃)
-	mPlusTwo := big.NewInt(int64(vk.Size) + 2)
-	var zetaMPlusTwo fr.Element
-	zetaMPlusTwo.Exp(zeta, mPlusTwo)
-	var zetaMPlusTwoBigInt big.Int
-	zetaMPlusTwo.ToBigIntRegular(&zetaMPlusTwoBigInt)
+	m := big.NewInt(int64(vk.Size))
+	var zetaM fr.Element
+	zetaM.Exp(zeta, m)
+	var zetaMBigInt big.Int
+	zetaM.ToBigIntRegular(&zetaMBigInt)
 	foldedH := proof.H[2]
-	foldedH.ScalarMultiplication(&foldedH, &zetaMPlusTwoBigInt)
+	foldedH.ScalarMultiplication(&foldedH, &zetaMBigInt)
 	foldedH.Add(&foldedH, &proof.H[1])
-	foldedH.ScalarMultiplication(&foldedH, &zetaMPlusTwoBigInt)
+	foldedH.ScalarMultiplication(&foldedH, &zetaMBigInt)
 	foldedH.Add(&foldedH, &proof.H[0])
 
 	// Compute the commitment to the linearized polynomial
