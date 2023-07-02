@@ -243,6 +243,7 @@ func Setup(spr *cs.SparseR1CS, publicWitness bn254witness.Witness) (*ProvingKey,
 		offset = 0
 	}
 	
+	sizeSystem = int(pk.Domain[0].Cardinality)
 	start := int(mpi.SelfRank) * sizeSystem + offset
 	end := start - offset + sizeSystem
 	if end > len(spr.Constraints) + spr.NbPublicVariables {

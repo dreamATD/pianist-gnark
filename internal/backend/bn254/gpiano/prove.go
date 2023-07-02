@@ -561,7 +561,6 @@ func blindPoly(cp []fr.Element, rou, bo uint64) ([]fr.Element, error) {
 func evaluateLROSmallDomainX(spr *cs.SparseR1CS, pk *ProvingKey, solution []fr.Element) ([]fr.Element, []fr.Element, []fr.Element) {
 
 	n := int(pk.Domain[0].Cardinality)
-	m := int(globalDomain[0].Cardinality)
 
 	var l, r, o []fr.Element
 	l = make([]fr.Element, n)
@@ -580,8 +579,7 @@ func evaluateLROSmallDomainX(spr *cs.SparseR1CS, pk *ProvingKey, solution []fr.E
 	} else {
 		offset = 0
 	}
-	sizeSystem := spr.NbPublicVariables + len(spr.Constraints)
-	sizeSystem = (sizeSystem + m - 1) / m
+	sizeSystem := int(pk.Domain[0].Cardinality)
 
 	start := int(mpi.SelfRank) * sizeSystem + offset
 	end := start - offset + sizeSystem
