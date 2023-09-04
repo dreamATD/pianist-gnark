@@ -9,6 +9,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/piano"
 	"github.com/consensys/gnark/frontend"
+	"github.com/sunblaze-ucb/simpleMPI/mpi"
 )
 
 func main() {
@@ -45,15 +46,16 @@ func main() {
 		// in the constraints, the polynomial describing the permutation ("grand
 		// product argument"), and the FFT domains.
 		pk, vk, err := piano.Setup(ccs, witnessPublic)
-		//_, err := piano.Setup(r1cs, kate, &publicWitness)
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		proof, err := piano.Prove(ccs, pk, witnessFull)
-		if err != nil {
-			log.Fatal(err)
+		if mpi.SelfRank == 0 {
+			err = piano.Verify(proof, vk, witnessPublic)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
-		fmt.Println(proof, vk)
 	}
 }
