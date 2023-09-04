@@ -106,7 +106,6 @@ func main() {
 		// in the constraints, the polynomial describing the permutation ("grand
 		// product argument"), and the FFT domains.
 		pk, vk, err := piano.Setup(ccs, witnessPublic)
-		//_, err := piano.Setup(r1cs, kate, &publicWitness)
 		if err != nil {
 			log.Fatal(err)
 		}
