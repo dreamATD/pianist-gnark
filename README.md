@@ -1,6 +1,6 @@
 # Pianist
 
-This repo is an implementation of [Pianist](https://eprint.iacr.org/2023/1271.pdf) based on the library [gnark](https://github.com/ConsenSys/gnark).
+This repo is an implementation of [Pianist](https://eprint.iacr.org/2023/1271) based on the library [gnark](https://github.com/ConsenSys/gnark).
 
 ## How to run the code
 
