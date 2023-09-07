@@ -170,12 +170,14 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	var betaPowerM fr.Element
 	betaPowerM.Exp(beta, &bSize)
 	betaPowerM.ToBigIntRegular(&bBetaPowerM)
-	foldedHyDigest := proof.Hy[2]                                      // Hy3
-	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM) // (beta**M)*Hy3
-	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[1])                  // (beta**M)*Hy3 + Hy2
-	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM) // (beta**(2M))*Hy3 + (beta**M)*Hy2
-	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[0])                  // (beta**(2M))*Hy3 + (beta**M)*Hy2 + Hy1
-
+	foldedHyDigest := proof.Hy[3]
+	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM)
+	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[2])
+	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM)
+	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[1])
+	foldedHyDigest.ScalarMultiplication(&foldedHyDigest, &bBetaPowerM)
+	foldedHyDigest.Add(&foldedHyDigest, &proof.Hy[0])
+	
 	foldedProof, foldedDigest, err := kzg.FoldProof(
 		append(proof.PartialBatchedProof.ClaimedDigests,
 			proof.PartialZShiftedProof.ClaimedDigest,
@@ -187,7 +189,7 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 		hFunc)
 
 	if err != nil {
-		return fmt.Errorf("failed to fold proof on X = alpha: %v", err)
+		return fmt.Errorf("failed to fold proof on Y = beta: %v", err)
 	}
 	var shiftedBeta fr.Element
 	shiftedBeta.Mul(&beta, &vk.GeneratorY)
@@ -207,7 +209,7 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 		vk.KZGSRS,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to batch verify on X = alpha: %v", err)
+		return fmt.Errorf("failed to batch verify on Y = beta: %v", err)
 	}
 
 	log.Debug().Dur("took", time.Since(start)).Msg("verifier done")

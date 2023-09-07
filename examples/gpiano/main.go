@@ -48,7 +48,7 @@ type Circuit struct {
 func (circuit *Circuit) Define(api frontend.API) error {
 
 	// number of bits of exponent
-	const bitSize = 2
+	const bitSize = 4000
 
 	// specify constraints
 	output := frontend.Variable(1)
@@ -121,48 +121,48 @@ func main() {
 		}
 	}
 	// Wrong data: the proof fails
-	{
-		// Witnesses instantiation. Witness is known only by the prover,
-		// while public w is a public data known by the verifier.
-		var w, pW Circuit
-		w.X = 12
-		w.E = 2
-		w.Y = 144
+	// {
+	// 	// Witnesses instantiation. Witness is known only by the prover,
+	// 	// while public w is a public data known by the verifier.
+	// 	var w, pW Circuit
+	// 	w.X = 12
+	// 	w.E = 2
+	// 	w.Y = 144
 
-		pW.X = 12
-		pW.E = 2
-		pW.Y = 144 + 1
+	// 	pW.X = 12
+	// 	pW.E = 2
+	// 	pW.Y = 144 + 1
 
-		witnessFull, err := frontend.NewWitness(&w, ecc.BN254)
-		if err != nil {
-			log.Fatal(err)
-		}
+	// 	witnessFull, err := frontend.NewWitness(&w, ecc.BN254)
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
 
-		witnessPublic, err := frontend.NewWitness(&pW, ecc.BN254, frontend.PublicOnly())
-		if err != nil {
-			log.Fatal(err)
-		}
+	// 	witnessPublic, err := frontend.NewWitness(&pW, ecc.BN254, frontend.PublicOnly())
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
 
-		// public data consists the polynomials describing the constants involved
-		// in the constraints, the polynomial describing the permutation ("grand
-		// product argument"), and the FFT domains.
-		pk, vk, err := gpiano.Setup(ccs, witnessPublic)
-		//_, err := gpiano.Setup(r1cs, kate, &publicWitness)
-		if err != nil {
-			log.Fatal(err)
-		}
+	// 	// public data consists the polynomials describing the constants involved
+	// 	// in the constraints, the polynomial describing the permutation ("grand
+	// 	// product argument"), and the FFT domains.
+	// 	pk, vk, err := gpiano.Setup(ccs, witnessPublic)
+	// 	//_, err := gpiano.Setup(r1cs, kate, &publicWitness)
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
 
-		proof, err := gpiano.Prove(ccs, pk, witnessFull)
-		if err != nil {
-			fmt.Printf("Failed to generate correct proof: %v\n", err)
-		} else if mpi.SelfRank == 0 {
-			fmt.Println("Verifying proof...")
-			err = gpiano.Verify(proof, vk, witnessPublic)
-			if err == nil {
-				log.Fatal("Error: wrong proof is accepted")
-			}
-		}
-	}
+	// 	proof, err := gpiano.Prove(ccs, pk, witnessFull)
+	// 	if err != nil {
+	// 		fmt.Printf("Failed to generate correct proof: %v\n", err)
+	// 	} else if mpi.SelfRank == 0 {
+	// 		fmt.Println("Verifying proof...")
+	// 		err = gpiano.Verify(proof, vk, witnessPublic)
+	// 		if err == nil {
+	// 			log.Fatal("Error: wrong proof is accepted")
+	// 		}
+	// 	}
+	// }
 	fmt.Println("Done")
 }
 

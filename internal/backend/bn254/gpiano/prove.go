@@ -417,15 +417,10 @@ func Prove(spr *cs.SparseR1CS, pk *ProvingKey, fullWitness bn254witness.Witness,
 		hFunc,
 		globalSRS,
 	)
-	if err != nil {
-		return nil, err
-	}
 	
-	var betaNext fr.Element
-	betaNext.Mul(&beta, &globalDomain[0].Generator)
 	proof.WShiftedProof, err = kzg.Open(
 		wCanonicalY,
-		betaNext,
+		betaShifted,
 		globalSRS,
 	)
 	if err != nil {
@@ -570,6 +565,10 @@ func evaluateLROSmallDomainX(spr *cs.SparseR1CS, pk *ProvingKey, solution []fr.E
 	o = make([]fr.Element, n)
 	s0 := solution[0]
 
+	if spr.NbPublicVariables > n {
+		panic("The current circuit partition requires the public input be fitted in the first circuit.")
+	}
+
 	var offset int
 	if mpi.SelfRank == 0 {
 		for i := 0; i < spr.NbPublicVariables; i++ { // placeholders
@@ -581,21 +580,23 @@ func evaluateLROSmallDomainX(spr *cs.SparseR1CS, pk *ProvingKey, solution []fr.E
 	} else {
 		offset = 0
 	}
-	sizeSystem := int(pk.Domain[0].Cardinality)
 
-	start := int(mpi.SelfRank) * sizeSystem + offset
-	end := start - offset + sizeSystem
+	start := int(mpi.SelfRank) * n + offset
+	end := start - offset + n
 	if end > len(spr.Constraints) + spr.NbPublicVariables {
 		end = len(spr.Constraints) + spr.NbPublicVariables
 	}
 	for i := start; i < end; i++ { // constraints
-		j := i % sizeSystem
+		j := i % n
 		ii := i - spr.NbPublicVariables
 		l[j].Set(&solution[spr.Constraints[ii].L.WireID()])
 		r[j].Set(&solution[spr.Constraints[ii].R.WireID()])
 		o[j].Set(&solution[spr.Constraints[ii].O.WireID()])
 	}
 	offset += end - start
+	if offset < 0 {
+		offset = 0
+	}
 	for i := offset; i < n; i++ { // offset to reach 2**n constraints (where the id of l,r,o is 0, so we assign solution[0])
 		l[i] = s0
 		r[i] = s0

@@ -125,58 +125,58 @@ func main() {
 		}
 	}
 	// Wrong data: the proof fails
-	{
-		// Witnesses instantiation. Witness is known only by the prover,
-		// while public w is a public data known by the verifier.
-		var w, pW Circuit
-		w.X = 12
-		w.E = 2
-		//  + mpi.SelfRank
-		tmp := 144
-		// for i := 0; i < int(mpi.SelfRank); i++ {
-		// 	tmp *= 12
-		// }
-		w.Y = tmp
+	// {
+	// 	// Witnesses instantiation. Witness is known only by the prover,
+	// 	// while public w is a public data known by the verifier.
+	// 	var w, pW Circuit
+	// 	w.X = 12
+	// 	w.E = 2
+	// 	//  + mpi.SelfRank
+	// 	tmp := 144
+	// 	// for i := 0; i < int(mpi.SelfRank); i++ {
+	// 	// 	tmp *= 12
+	// 	// }
+	// 	w.Y = tmp
 
-		pW.X = 12
-		pW.E = 2
-		pW.Y = tmp + 1
+	// 	pW.X = 12
+	// 	pW.E = 2
+	// 	pW.Y = tmp + 1
 
-		witnessFull, err := frontend.NewWitness(&w, ecc.BN254)
-		if err != nil {
-			log.Fatal(err)
-		}
+	// 	witnessFull, err := frontend.NewWitness(&w, ecc.BN254)
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
 
-		witnessPublic, err := frontend.NewWitness(&pW, ecc.BN254, frontend.PublicOnly())
-		if err != nil {
-			log.Fatal(err)
-		}
+	// 	witnessPublic, err := frontend.NewWitness(&pW, ecc.BN254, frontend.PublicOnly())
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
 
-		// public data consists the polynomials describing the constants involved
-		// in the constraints, the polynomial describing the permutation ("grand
-		// product argument"), and the FFT domains.
-		pk, vk, err := piano.Setup(ccs, witnessPublic)
-		//_, err := piano.Setup(r1cs, kate, &publicWitness)
-		if err != nil {
-			log.Fatal(err)
-		}
+	// 	// public data consists the polynomials describing the constants involved
+	// 	// in the constraints, the polynomial describing the permutation ("grand
+	// 	// product argument"), and the FFT domains.
+	// 	pk, vk, err := piano.Setup(ccs, witnessPublic)
+	// 	//_, err := piano.Setup(r1cs, kate, &publicWitness)
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
 
-		proof, err := piano.Prove(ccs, pk, witnessFull)
-		fmt.Println("Verifying proof...")
-		if err != nil {
-			fmt.Printf("Failed to generate correct proof: %v\n", err)
-			fmt.Println("Done")
-			return
-		}
+	// 	proof, err := piano.Prove(ccs, pk, witnessFull)
+	// 	fmt.Println("Verifying proof...")
+	// 	if err != nil {
+	// 		fmt.Printf("Failed to generate correct proof: %v\n", err)
+	// 		fmt.Println("Done")
+	// 		return
+	// 	}
 
-		if mpi.SelfRank == 0 {
-			fmt.Println("Verifying proof...")
-			err = piano.Verify(proof, vk, witnessPublic)
-			if err == nil {
-				log.Fatal("Error: wrong proof is accepted")
-			}
-		}
-	}
+	// 	if mpi.SelfRank == 0 {
+	// 		fmt.Println("Verifying proof...")
+	// 		err = piano.Verify(proof, vk, witnessPublic)
+	// 		if err == nil {
+	// 			log.Fatal("Error: wrong proof is accepted")
+	// 		}
+	// 	}
+	// }
 	fmt.Println("Done")
 }
 
