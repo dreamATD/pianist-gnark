@@ -51,6 +51,9 @@ func main() {
 		}
 
 		proof, err := gpiano.Prove(ccs, pk, witnessFull)
+		if err != nil {
+			log.Fatal(err)
+		}
 		if mpi.SelfRank == 0 {
 			err = gpiano.Verify(proof, vk, witnessPublic)
 			if err != nil {
