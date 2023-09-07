@@ -52,7 +52,7 @@ Under `/pianist-gnark/examples/piano` (or `/pianist-gnark/examples/gpiano` if yo
 go run main.go
 ```
 
-## Some clarification for the examples in `gnark/examples/piano` (and similar to `gnark/examples/gpiano`)
+## Some clarification for the examples in `pianist-gnark/examples/piano` (and similar to `pianist-gnark/examples/gpiano`)
 Showing the follosing output means it runs successfully:
 ```
 [127.0.0.1 192.168.1.44 172.17.0.1]
