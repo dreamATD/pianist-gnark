@@ -31,9 +31,9 @@ chmod 700 ~/.ssh
 chmod 600 ~/.ssh/authorized_keys
 ```
 
-#### Clone the `dreamATD/gnark-crypto/` under the same directory as `/gnark`.
+#### Clone the `dreamATD/pianist-gnark-crypto/` under the same directory as `/pianist-gnark`.
 ```
-git clone git@github.com:dreamATD/gnark-crypto.git
+git clone git@github.com:dreamATD/pianist-gnark-crypto.git
 ```
 
 #### Generate the `ip.txt`
@@ -44,10 +44,10 @@ localhost:9999
 ```
 
 #### Configure the path of `ip.txt` and key files
-In the `/gnark-crypto/ecc/bn254/fr/dkzg/dkzg.go`, configure `init()` function by the path of `ip.txt`, path of the private key used to log in the other machines and the username.
+In the `/pianist-gnark-crypto/ecc/bn254/fr/dkzg/dkzg.go`, configure `init()` function by the path of `ip.txt`, path of the private key used to log in the other machines and the username.
 
 #### Run the code
-Under `/gnark/examples/piano` (or `/gnark/examples/gpiano` if you want to run the version for general circuits), run the following command:
+Under `/pianist-gnark/examples/piano` (or `/pianist-gnark/examples/gpiano` if you want to run the version for general circuits), run the following command:
 ```
 go run main.go
 ```
@@ -62,7 +62,6 @@ rank 1 [127.0.0.1 192.168.1.44 172.17.0.1]
 
 Connected to slave 1
 Sent working directory to slave 1
-rank 1 Changed working directory to /home/liutianyi/Piano/gnark/examples/piano
 
 rank 1 Received buf size 60
 
