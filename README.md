@@ -1,149 +1,93 @@
-# `gnark` zk-SNARK library
+# Pianist
 
-[![Twitter URL](https://img.shields.io/twitter/url/https/twitter.com/gnark_team.svg?style=social&label=Follow%20%40gnark_team)](https://twitter.com/gnark_team) [![License](https://img.shields.io/badge/license-Apache%202-blue)](LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/ConsenSys/gnark)](https://goreportcard.com/badge/github.com/ConsenSys/gnark)
-[![PkgGoDev](https://pkg.go.dev/badge/mod/github.com/consensys/gnark)](https://pkg.go.dev/mod/github.com/consensys/gnark)
-[![Documentation Status](https://readthedocs.com/projects/pegasys-gnark/badge/)][`gnark` User Documentation] [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5819104.svg)](https://doi.org/10.5281/zenodo.5819104)
+This repo is an implementation of [Pianist](https://eprint.iacr.org/2023/1271.pdf) based on the library [gnark](https://github.com/ConsenSys/gnark).
 
-<img  width="100px"
-src="logo_new.png">
+## How to run the code
 
-`gnark` is a fast zk-SNARK library that offers a high-level API to design circuits. The library is open source and developed under the Apache 2.0 license
-
-
-## Useful Links
-
-* [`gnark` User Documentation]
-* [`gnark` Playground]
-* [`gnark` Issues]
-* [`gnark` Benchmarks](https://docs.gnark.consensys.net/en/latest/#gnark-is-fast)
-* [`gnark-announce`] - Announcement list for new releases and security patches
-
-
-## `gnark` Users
-
-To get started with `gnark` and write your first circuit, follow [these instructions][`gnark` User Documentation].
-
-Checkout the [online playground][`gnark` Playground] to compile circuits and visualize constraint systems.
-
-
-## Warning
-
-**`gnark` has not been audited and is provided as-is, we make no guarantees or warranties to its safety and reliability. In particular, `gnark` makes no security guarantees such as constant time implementation or side-channel attack resistance.**
-
-`gnark` and `gnark-crypto` packages are optimized for 64bits architectures (x86 `amd64`) and tested on Unix (Linux / macOS).
-
-## Issues
-
-`gnark` issues are tracked [in the GitHub issues tab][`gnark` Issues].
-
-**To report a security bug, please refer to [`gnark` Security Policy](SECURITY.md).**
-
-If you have any questions, queries or comments, [GitHub discussions] is the place to find us.
-
-You can also get in touch directly: gnark@consensys.net
-
-## Release Notes
-
-[Release Notes](CHANGELOG.md)
-
-## Proving schemes and curves
-
-Refer to [Proving schemes and curves] for more details.
-
-`gnark` support the following zk-SNARKs:
-
-- [x] [Groth16](https://eprint.iacr.org/2016/260)
-- [x] [PlonK](https://eprint.iacr.org/2019/953)
-
-which can be instantiated with the following curves
-
-- [x] BN254
-- [x] BLS12-381
-- [x] BLS12-377
-- [x] BW6-761
-- [x] BLS24-315
-- [x] BW6-633
-
-### Example
-
-Refer to the [`gnark` User Documentation]
-
-Here is what `x**3 + x + 5 = y` looks like
-
-```golang
-// CubicCircuit defines a simple circuit
-// x**3 + x + 5 == y
-type CubicCircuit struct {
-	// struct tags on a variable is optional
-	// default uses variable name and secret visibility.
-	X frontend.Variable `gnark:"x"`
-	Y frontend.Variable `gnark:",public"`
-}
-
-// Define declares the circuit constraints
-// x**3 + x + 5 == y
-func (circuit *CubicCircuit) Define(api frontend.API) error {
-	x3 := api.Mul(circuit.X, circuit.X, circuit.X)
-	api.AssertIsEqual(circuit.Y, api.Add(x3, circuit.X, 5))
-	return nil
-}
-
-// compiles our circuit into a R1CS
-var circuit CubicCircuit
-ccs, err := frontend.Compile(ecc.BN254, r1cs.NewBuilder, &circuit)
-
-// groth16 zkSNARK: Setup
-pk, vk, err := groth16.Setup(ccs)
-
-// witness definition
-assignment := CubicCircuit{X: 3, Y: 35}
-witness, err := frontend.NewWitness(&assignment, ecc.BN254)
-publicWitness, _ := witness.Public()
-
-// groth16: Prove & Verify
-proof, err := groth16.Prove(ccs, pk, witness)
-err := groth16.Verify(proof, vk, publicWitness)
+### Install Go
+```
+wget https://go.dev/dl/go1.20.5.linux-amd64.tar.gz # find the correct package on https://go.dev/dl/.
+rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.20.5.linux-amd64.tar.gz
+export PATH=$PATH:/usr/local/go/bin
 ```
 
-## Citing
+### On the same computer
 
-If you use `gnark` in your research a citation would be appreciated.
-Please use the following BibTeX to cite the most recent release.
+Although Pianist is a zero-knowledge scheme deployed on a distributed system, it can be simulated on a single machine. In the case, the machine creates two processes and exchanges messages through ssh connection.
 
-```bib
-@software{gnark-v0.6.4,
-  author       = {Gautam Botrel and
-                  Thomas Piellard and
-                  Youssef El Housni and
-                  Ivo Kubjas and
-                  Arya Tabaie},
-  title        = {ConsenSys/gnark: v0.6.4},
-  month        = feb,
-  year         = 2022,
-  publisher    = {Zenodo},
-  version      = {v0.6.4},
-  doi          = {10.5281/zenodo.6093969},
-  url          = {https://doi.org/10.5281/zenodo.6093969}
-}
+#### Configure SSH
+
+1. install `openssh-server`
+```
+sudo apt install openssh-server
 ```
 
-## Contributing
+2. Configure ssh key
+```
+ssh-keygen -t rsa -b 4096
+ssh-copy-id ${USER}@localhost
+chmod go-w ~/
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/authorized_keys
+```
 
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our [code of conduct](CODE_OF_CONDUCT.md), and the process for submitting pull requests to us.
+#### Clone the `dreamATD/gnark-crypto/` under the same directory as `/gnark`.
+```
+git clone git@github.com:dreamATD/gnark-crypto.git
+```
 
-## Versioning
+#### Generate the `ip.txt`
+Write a file containing the IP information in your cluster. Since here we use localhost to simulate two machines, we set different ports. Here is an example:
+```
+localhost:9998
+localhost:9999
+```
 
-We use [SemVer](http://semver.org/) for versioning. For the versions available, see the [tags on this repository](https://github.com/consensys/gnark/tags).
+#### Configure the path of `ip.txt` and key files
+In the `/gnark-crypto/ecc/bn254/fr/dkzg/dkzg.go`, configure `init()` function by the path of `ip.txt`, path of the private key used to log in the other machines and the username.
 
-## License
+#### Run the code
+Under `/gnark/examples/piano` (or `/gnark/examples/gpiano` if you want to run the version for general circuits), run the following command:
+```
+go run main.go
+```
 
-This project is licensed under the Apache 2 License - see the [LICENSE](LICENSE) file for details
+## Some clarification for the examples in `gnark/examples/piano` (and similar to `gnark/examples/gpiano`)
+Showing the follosing output means it runs successfully:
+```
+[127.0.0.1 192.168.1.44 172.17.0.1]
+rank 1 [127.0.0.1 192.168.1.44 172.17.0.1]
 
-[`gnark` Issues]: https://github.com/consensys/gnark/issues
-[`gnark` Playground]: https://play.gnark.io
-[`gnark` User Documentation]: https://docs.gnark.consensys.net/en/latest/
-[GitHub discussions]: https://github.com/ConsenSys/gnark/discussions
-[Proving schemes and curves]: https://docs.gnark.consensys.net/en/latest/Concepts/schemes_curves/
-[`gnark-announce`]: https://groups.google.com/g/gnark-announce
-[@gnark_team]: https://twitter.com/gnark_team
+rank 1 [127.0.0.1 192.168.1.44 172.17.0.1]
+
+Connected to slave 1
+Sent working directory to slave 1
+rank 1 Changed working directory to /home/liutianyi/Piano/gnark/examples/piano
+
+rank 1 Received buf size 60
+
+rank 1 14:40:16 INF compiling circuit curve=bn254
+
+rank 1 14:40:16 INF parsed circuit inputs nbPublic=2 nbSecret=1
+
+14:40:16 INF compiling circuit curve=bn254
+14:40:16 INF parsed circuit inputs nbPublic=2 nbSecret=1
+14:40:16 INF building constraint system curve=bn254 nbConstraints=27999
+rank 1 14:40:16 INF building constraint system curve=bn254 nbConstraints=27999
+
+rank 1 Prover started
+
+rank 1 14:40:18 DBG constraint system solver done backend=plonk curve=bn254 nbConstraints=27999 took=9.924368
+
+rank 1 Solution computed
+
+Prover started
+14:40:18 DBG constraint system solver done backend=plonk curve=bn254 nbConstraints=27999 took=7.477513
+Solution computed
+rank 1 14:40:21 DBG prover done backend=piano curve=bn254 nbConstraints=27999 took=2195.654321
+
+rank 1 Done
+
+14:40:21 DBG verifier done backend=piano curve=bn254 took=6.606371
+Done
+```
