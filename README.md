@@ -1,4 +1,4 @@
-# Pianist
+# Pianist-gnark
 
 This repo is an implementation of [Pianist](https://eprint.iacr.org/2023/1271) based on the library [gnark](https://github.com/ConsenSys/gnark).
 
